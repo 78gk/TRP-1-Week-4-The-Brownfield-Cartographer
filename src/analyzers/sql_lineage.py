@@ -80,11 +80,19 @@ class SQLLineageAnalyzer:
             logger.warning(f"Could not parse SQL from {source_file}: unparseable by any dialect")
             return deps
         
+        search_offset = 0
         for statement in parsed:
             if statement is None:
                 continue
             try:
-                dep = self._extract_from_statement(statement, used_dialect, source_file, line_offset)
+                statement_sql = statement.sql(dialect=used_dialect)
+                stmt_line_range, search_offset = self._locate_statement_line_range(sql, statement_sql, search_offset, line_offset)
+                dep = self._extract_from_statement(
+                    statement,
+                    used_dialect,
+                    source_file,
+                    stmt_line_range,
+                )
                 if dep.source_tables or dep.target_tables:
                     deps.append(dep)
             except Exception as e:
@@ -93,7 +101,7 @@ class SQLLineageAnalyzer:
         return deps
     
     def _extract_from_statement(self, statement, dialect: str, 
-                                 source_file: str, line_offset: int) -> SQLDependency:
+                                 source_file: str, line_range: Tuple[int, int]) -> SQLDependency:
         """Extract source and target tables from a parsed SQL statement."""
         source_tables: Set[str] = set()
         target_tables: Set[str] = set()
@@ -152,11 +160,32 @@ class SQLLineageAnalyzer:
             target_tables=sorted(target_tables),
             cte_names=sorted(cte_names),
             source_file=source_file,
-            line_range=(line_offset, line_offset),
+            line_range=line_range,
             dialect=dialect,
             is_read_operation=is_read,
             raw_sql_preview=raw_preview,
         )
+
+    def _locate_statement_line_range(
+        self,
+        full_sql: str,
+        statement_sql: str,
+        search_offset: int,
+        line_offset: int,
+    ) -> Tuple[Tuple[int, int], int]:
+        """Approximate the original line range for a parsed statement."""
+        normalized_statement = statement_sql.strip()
+        if not normalized_statement:
+            return (line_offset, line_offset), search_offset
+
+        position = full_sql.find(normalized_statement, search_offset)
+        if position == -1:
+            start_line = max(1, line_offset + 1)
+            return (start_line, start_line), search_offset
+
+        start_line = full_sql[:position].count('\n') + 1 + line_offset
+        end_line = start_line + normalized_statement.count('\n')
+        return (start_line, end_line), position + len(normalized_statement)
     
     def _get_table_name(self, table: exp.Table) -> Optional[str]:
         """Extract fully qualified table name from a Table expression."""
@@ -241,6 +270,7 @@ class SQLLineageAnalyzer:
                     target_tables=[model_name],
                     cte_names=[],
                     source_file=file_path,
+                    line_range=(1, max(1, content.count('\n') + 1)),
                     dialect=dialect or self.default_dialect,
                     is_read_operation=False,
                 ))

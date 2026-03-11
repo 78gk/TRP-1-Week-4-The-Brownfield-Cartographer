@@ -63,7 +63,7 @@ class SurveyorAgent:
 
     def _analyze_file(self, file_path: Path, root_path: Path, repo: Optional[Repo] = None):
         """Extract nodes and metadata from a file."""
-        rel_path = str(file_path.relative_to(root_path))
+        rel_path = str(file_path.relative_to(root_path)).replace('\\', '/')
         ext = file_path.suffix.lower()
         
         language = "unknown"
@@ -107,25 +107,33 @@ class SurveyorAgent:
         
         # Run TreeSitter analysis
         try:
-            result = self.ts_analyzer.analyze_file(str(file_path))
+            result = self.ts_analyzer.analyze_file(str(file_path), repo_root=str(root_path))
             module_node.public_functions = [f.name for f in result.functions if not f.name.startswith('_')]
             module_node.classes = [c.name for c in result.classes]
-            module_node.imports = [i.module_path for i in result.imports]
+            module_node.imports = [i.resolved_path or i.module_path for i in result.imports]
+            module_node.decorators = sorted({decorator for f in result.functions for decorator in f.decorators})
+            module_node.complexity_score = float(
+                len(result.functions) + len(result.classes) + len(result.imports)
+            )
             
             # Add node to KG
             self.kg.add_module_node(module_node)
             
             # Add imports to KG
             for imp in result.imports:
+                target = imp.resolved_path or imp.module_path
                 self.kg.add_import_edge(ImportEdge(
                     source=rel_path,
-                    target=imp.module_path
+                    target=target,
+                    import_names=imp.symbols,
+                    source_file=rel_path,
                 ))
             
             # Add functions as nodes
             for func in result.functions:
+                qualified_name = f"{rel_path}:{func.name}"
                 fn_node = FunctionNode(
-                    qualified_name=f"{rel_path}:{func.name}",
+                    qualified_name=qualified_name,
                     parent_module=rel_path,
                     signature=func.signature,
                     line_number=func.line_number,
@@ -159,6 +167,10 @@ class SurveyorAgent:
             except Exception:
                 pagerank = {n: 0.0 for n in import_subgraph.nodes()}
 
+        for node_id, score in pagerank.items():
+            if node_id in module_nodes:
+                self.kg.update_node_attributes(node_id, pagerank_score=score)
+
         # 2. Circular Dependencies (SCC)
         circular_components = [list(c) for c in nx.strongly_connected_components(import_subgraph) if len(c) > 1]
         
@@ -167,12 +179,27 @@ class SurveyorAgent:
         # and they are not entry points or scripts.
         dead_candidates = []
         for node in import_subgraph.nodes():
-            if import_subgraph.in_degree(node) == 0:
+            if import_subgraph.in_degree(node) == 0 and not self._is_entrypoint_module(node):
                 # Flag in metadata
                 if node in module_nodes:
-                    node_model = module_nodes[node]
-                    node_model.is_dead_code_candidate = True
+                    self.kg.update_node_attributes(node, is_dead_code_candidate=True)
                     dead_candidates.append(node)
+
+        imported_symbols: Set[str] = set()
+        for _, _, edge_data in self.kg.graph.edges(data=True):
+            if edge_data.get("edge_type") == EdgeType.IMPORTS.value:
+                imported_symbols.update(edge_data.get("import_names", []))
+
+        function_dead_candidates = []
+        for function_id, function_node in self.kg.get_function_nodes().items():
+            function_name = function_id.rsplit(':', 1)[-1]
+            if (
+                function_node.is_public_api
+                and function_name not in imported_symbols
+                and function_name not in {'main'}
+            ):
+                self.kg.update_node_attributes(function_id, is_dead_code_candidate=True)
+                function_dead_candidates.append(function_id)
 
         # 4. High-Velocity Files (80/20 rule)
         velocities = [(n, m.change_velocity_30d) for n, m in module_nodes.items()]
@@ -184,6 +211,7 @@ class SurveyorAgent:
             "pagerank": pagerank,
             "circular_dependencies": circular_components,
             "dead_code_candidates": dead_candidates,
+            "dead_function_candidates": function_dead_candidates,
             "high_velocity_files": high_velocity_files
         }
 
@@ -198,6 +226,11 @@ class SurveyorAgent:
             "total_import_edges": summary.get("edge_type_counts", {}).get(EdgeType.IMPORTS.value, 0),
             "top_architectural_hubs": top_pagerank,
             "circular_dependency_count": len(analytics["circular_dependencies"]),
-            "dead_code_candidate_count": len(analytics["dead_code_candidates"]),
+            "dead_code_candidate_count": len(analytics["dead_code_candidates"]) + len(analytics.get("dead_function_candidates", [])),
             "high_velocity_files": analytics["high_velocity_files"]
         }
+
+    def _is_entrypoint_module(self, module_path: str) -> bool:
+        entrypoints = ('__main__.py', 'cli.py', 'main.py')
+        normalized = module_path.replace('\\', '/')
+        return normalized.endswith(entrypoints)

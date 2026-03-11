@@ -93,6 +93,31 @@ class KnowledgeGraph:
             edge.source, edge.target,
             **edge.model_dump(mode='json')
         )
+
+    def update_node_attributes(self, node_id: str, **attrs: Any) -> None:
+        """Update both the raw graph node attributes and the typed cache."""
+        if node_id not in self._graph:
+            return
+
+        self._graph.nodes[node_id].update(attrs)
+        node_type = self._graph.nodes[node_id].get("node_type")
+
+        if node_type == NodeType.MODULE.value and node_id in self._module_nodes:
+            payload = self._module_nodes[node_id].model_dump(mode='python')
+            payload.update(attrs)
+            self._module_nodes[node_id] = ModuleNode.model_validate(payload)
+        elif node_type == NodeType.DATASET.value and node_id in self._dataset_nodes:
+            payload = self._dataset_nodes[node_id].model_dump(mode='python')
+            payload.update(attrs)
+            self._dataset_nodes[node_id] = DatasetNode.model_validate(payload)
+        elif node_type == NodeType.FUNCTION.value and node_id in self._function_nodes:
+            payload = self._function_nodes[node_id].model_dump(mode='python')
+            payload.update(attrs)
+            self._function_nodes[node_id] = FunctionNode.model_validate(payload)
+        elif node_type == NodeType.TRANSFORMATION.value and node_id in self._transformation_nodes:
+            payload = self._transformation_nodes[node_id].model_dump(mode='python')
+            payload.update(attrs)
+            self._transformation_nodes[node_id] = TransformationNode.model_validate(payload)
     
     # === QUERY METHODS ===
     
@@ -101,6 +126,9 @@ class KnowledgeGraph:
     
     def get_dataset_nodes(self) -> Dict[str, DatasetNode]:
         return self._dataset_nodes.copy()
+
+    def get_function_nodes(self) -> Dict[str, FunctionNode]:
+        return self._function_nodes.copy()
     
     def get_nodes_by_type(self, node_type: str) -> List[str]:
         return [n for n, d in self._graph.nodes(data=True) if d.get('node_type') == node_type]
@@ -120,10 +148,10 @@ class KnowledgeGraph:
     
     # === SERIALIZATION ===
     
-    def serialize_to_json(self, filepath: Path) -> None:
-        """Serialize the full graph to JSON."""
+    def _serialize_graph(self, graph: nx.DiGraph, filepath: Path) -> None:
+        """Serialize any NetworkX DiGraph to JSON."""
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        data = json_graph.node_link_data(self._graph)
+        data = json_graph.node_link_data(graph)
         # Convert any non-serializable types
         def make_serializable(obj):
             if isinstance(obj, set):
@@ -137,7 +165,32 @@ class KnowledgeGraph:
         cleaned = json.loads(json.dumps(data, default=make_serializable))
         with open(filepath, 'w') as f:
             json.dump(cleaned, f, indent=2, default=str)
-        logger.info(f"Graph serialized to {filepath} ({self._graph.number_of_nodes()} nodes, {self._graph.number_of_edges()} edges)")
+        logger.info(f"Graph serialized to {filepath} ({graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges)")
+
+    def serialize_to_json(self, filepath: Path) -> None:
+        """Serialize the full graph to JSON."""
+        self._serialize_graph(self._graph, filepath)
+
+    def serialize_filtered_to_json(
+        self,
+        filepath: Path,
+        node_types: Optional[Set[str]] = None,
+        edge_types: Optional[Set[str]] = None,
+    ) -> None:
+        """Serialize a filtered graph view to JSON."""
+        filtered = self._graph.copy()
+
+        if node_types is not None:
+            filtered.remove_nodes_from(
+                [n for n, d in filtered.nodes(data=True) if d.get("node_type") not in node_types]
+            )
+
+        if edge_types is not None:
+            filtered.remove_edges_from(
+                [(u, v) for u, v, d in filtered.edges(data=True) if d.get("edge_type") not in edge_types]
+            )
+
+        self._serialize_graph(filtered, filepath)
     
     @classmethod
     def deserialize_from_json(cls, filepath: Path) -> 'KnowledgeGraph':

@@ -16,6 +16,7 @@ class ImportEdge(BaseModel):
     target: str  # target module path
     import_count: int = 1  # weight
     import_names: List[str] = Field(default_factory=list)  # specific symbols imported
+    source_file: Optional[str] = None
 
 class ProducesEdge(BaseModel):
     model_config = ConfigDict(frozen=False)
@@ -32,6 +33,7 @@ class ConsumesEdge(BaseModel):
     source: str  # transformation node name
     target: str  # dataset node name (upstream)
     source_file: Optional[str] = None
+    line_range: Optional[tuple[int, int]] = None
 
 class CallsEdge(BaseModel):
     model_config = ConfigDict(frozen=False)
@@ -46,3 +48,4 @@ class ConfiguresEdge(BaseModel):
     source: str  # config file path
     target: str  # module or pipeline being configured
     config_keys: List[str] = Field(default_factory=list)
+    source_file: Optional[str] = None

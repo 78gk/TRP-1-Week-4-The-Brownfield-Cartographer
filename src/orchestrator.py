@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any
 
 from rich.console import Console
 from rich.logging import RichHandler
+import networkx as nx
+from networkx.readwrite import json_graph
 
 from src.graph.knowledge_graph import KnowledgeGraph
 from src.agents.surveyor import SurveyorAgent
@@ -27,6 +29,7 @@ class CartographerOrchestrator:
         self.output_dir = Path(output_dir)
         self.kg = KnowledgeGraph()
         self._temp_dir: Optional[str] = None
+        self._lineage_graph = nx.DiGraph()
     
     def run(self, target: str) -> Dict[str, Any]:
         """Run the full analysis pipeline on a target codebase.
@@ -74,6 +77,7 @@ class CartographerOrchestrator:
             try:
                 hydrologist = HydrologistAgent(self.kg)
                 hydro_results = hydrologist.analyze(str(repo_path))
+                self._lineage_graph = hydrologist.get_lineage_graph().copy()
                 results["hydrologist"] = hydro_results
                 console.print(f"[green]  ✓ Hydrologist complete: {hydro_results['total_datasets']} datasets, "
                             f"{hydro_results['total_lineage_edges']} lineage edges[/green]")
@@ -142,10 +146,17 @@ class CartographerOrchestrator:
         
         # Module graph
         module_graph_path = self.output_dir / "module_graph.json"
-        self.kg.serialize_to_json(module_graph_path)
+        self.kg.serialize_filtered_to_json(
+            module_graph_path,
+            node_types={"module", "function"},
+            edge_types={"imports", "calls", "configures"},
+        )
         
-        # Lineage graph (from the knowledge graph)
+        # Lineage graph (from Hydrologist's unified DAG)
         lineage_graph_path = self.output_dir / "lineage_graph.json"
-        self.kg.serialize_to_json(lineage_graph_path)
+        payload = json_graph.node_link_data(self._lineage_graph)
+        with open(lineage_graph_path, 'w') as f:
+            import json
+            json.dump(payload, f, indent=2)
         
         console.print(f"[green]  ✓ Graphs serialized to {self.output_dir}/[/green]")

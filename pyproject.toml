@@ -9,7 +9,10 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
     "networkx>=3.2",
-    "tree-sitter-languages>=1.10.0",
+    "tree-sitter>=0.24.0",
+    "tree-sitter-python>=0.23.6",
+    "tree-sitter-sql>=0.3.8",
+    "tree-sitter-yaml>=0.7.2",
     "sqlglot>=25.0.0",
     "click>=8.1.0",
     "gitpython>=3.1.40",
@@ -19,3 +22,6 @@ dependencies = [
 
 [project.scripts]
 cartographer = "src.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

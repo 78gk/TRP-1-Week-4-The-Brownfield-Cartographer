@@ -3,3 +3,7 @@ __pycache__/
 *.egg-info/
 .venv/
 targets/
+.cartography_validation/
+.cartography_jaffle_validation/
+INTERIM_REPORT.pdf
+assets/*.svg

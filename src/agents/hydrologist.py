@@ -243,6 +243,16 @@ class HydrologistAgent:
             dataset = flow['dataset']
             source_file = flow['source_file']
             transform_name = f"python:{source_file}:{flow['line_number']}"
+
+            transform_node = TransformationNode(
+                name=transform_name,
+                source_datasets=[dataset] if flow['operation'] == 'read' else [],
+                target_datasets=[dataset] if flow['operation'] == 'write' else [],
+                transformation_type="python_transform",
+                source_file=source_file,
+                line_range=(flow['line_number'], flow['line_number']),
+            )
+            self.kg.add_transformation_node(transform_node)
             
             self._lineage_graph.add_node(dataset, node_type="dataset",
                 storage_type="file" if '/' in dataset or '.' in dataset else "table")
@@ -251,10 +261,23 @@ class HydrologistAgent:
                 self._lineage_graph.add_edge(dataset, transform_name,
                     edge_type="python_read", source_file=source_file,
                     line_number=flow['line_number'], transformation_type="python_transform")
+                self.kg.add_consumes_edge(ConsumesEdge(
+                    source=transform_name,
+                    target=dataset,
+                    source_file=source_file,
+                    line_range=(flow['line_number'], flow['line_number']),
+                ))
             else:
                 self._lineage_graph.add_edge(transform_name, dataset,
                     edge_type="python_write", source_file=source_file,
                     line_number=flow['line_number'], transformation_type="python_transform")
+                self.kg.add_produces_edge(ProducesEdge(
+                    source=transform_name,
+                    target=dataset,
+                    transformation_type="python_transform",
+                    source_file=source_file,
+                    line_range=(flow['line_number'], flow['line_number']),
+                ))
             
             ds_node = DatasetNode(
                 name=dataset,
@@ -269,6 +292,13 @@ class HydrologistAgent:
                 task_id = f"task:{pipeline.pipeline_id}:{task.task_id}"
                 self._lineage_graph.add_node(task_id, node_type="task",
                     operator=task.operator_type, pipeline=pipeline.pipeline_id)
+
+                self.kg.add_transformation_node(TransformationNode(
+                    name=task_id,
+                    transformation_type="dag_task",
+                    source_file=pipeline.source_file,
+                    line_range=(task.line_number, task.line_number),
+                ))
                 
                 for upstream in task.upstream_tasks:
                     upstream_id = f"task:{pipeline.pipeline_id}:{upstream}"
@@ -279,7 +309,7 @@ class HydrologistAgent:
         # Add config relationships
         for config_file, target, rel_type in config_result.config_relationships:
             self.kg.add_configures_edge(ConfiguresEdge(
-                source=config_file, target=target, config_keys=[rel_type]))
+                source=config_file, target=target, config_keys=[rel_type], source_file=config_file))
         
         # Add dbt model metadata as enrichment
         for model in config_result.dbt_models:

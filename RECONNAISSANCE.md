@@ -1,49 +1,63 @@
-# RECONNAISSANCE.md: jaffle_shop Codebase Audit
+# RECONNAISSANCE.md: ol-data-platform Codebase Audit
 
-This report documents the manual reconnaissance of the `jaffle_shop` dbt repository, answering critical architectural and data flow questions.
+This report documents the manual reconnaissance of the `mitodl/ol-data-platform` repository, answering the Five FDE Day-One Questions and identifying the concrete pain points that a Brownfield Cartographer system should remove.
+
+## 0. Target Qualification
+
+Why this target was selected:
+- It is a real brownfield data platform used to power MIT Open Learning data services.
+- It visibly contains both Python orchestration code and SQL transformation code in the same repository.
+- It is comfortably above the size threshold, with multiple Dagster code locations, shared Python packages, utility scripts, and a full dbt project.
+- It represents the mixed-stack architecture the assignment is aiming at: Python ingestion and orchestration, dbt SQL transformations, warehouse configuration, and downstream analytics surfaces.
 
 ## 1. Primary Data Ingestion Path
-The primary ingestion path is **Seed-to-Stage**.
-- **Source**: Raw data enters the system via static CSV files located in the `seeds/` directory:
-    - [seeds/raw_customers.csv](https://github.com/dbt-labs/jaffle-shop/blob/main/seeds/raw_customers.csv)
-    - [seeds/raw_orders.csv](https://github.com/dbt-labs/jaffle-shop/blob/main/seeds/raw_orders.csv)
-    - [seeds/raw_payments.csv](https://github.com/dbt-labs/jaffle-shop/blob/main/seeds/raw_payments.csv)
-- **Mechanism**: Data is loaded into the warehouse via the `dbt seed` command. It is then ingested into the modeling layer by **staging models** using the `{{ source() }}` macro. 
-- **Key Pattern**: `models/staging/stg_orders.sql` references the seed via `{{ source('jaffle_shop', 'raw_orders') }}`, effectively serving as the first "logical" ingestion point.
+The primary ingestion path is **Python-orchestrated landing into the raw lakehouse, followed by dbt SQL transformation**.
+- **Source**: Operational data is ingested through Python-based loaders and orchestrators rather than through SQL alone.
+- **Mechanism**: `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/loads.py` defines a `dlt.pipeline` named `edxorg_s3` that writes environment-specific outputs into filesystem or S3 destinations.
+- **Concrete file-level evidence**: `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/README.md` documents that production writes Iceberg tables to `s3://ol-data-lake-raw-production/edxorg` and registers them in the `ol_warehouse_production_raw` Glue database.
+- **Transformation handoff**: `dg_projects/lakehouse/lakehouse/definitions.py` wires the dbt project into the lakehouse code location, and `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` exposes the `full_dbt_project` asset that builds the SQL transformation layer from `src/ol_dbt`.
 
-## 2. Most Critical Output Datasets
-The 3 most critical "Marts" or final datasets are:
-1.  **[models/customers.sql](https://github.com/dbt-labs/jaffle-shop/blob/main/models/customers.sql)**: The primary dimension for Customer 360 analysis, aggregating orders and lifetime value.
-2.  **[models/orders.sql](https://github.com/dbt-labs/jaffle-shop/blob/main/models/orders.sql)**: The central fact table for transaction lifecycle analysis, joining order data with payment statuses.
-3.  **[models/staging/stg_payments.sql](https://github.com/dbt-labs/jaffle-shop/blob/main/models/staging/stg_payments.sql)**: While a staging model, it is the sole source of "truth" for payment success/failure, which flows into both major marts.
+## 2. Most Critical Output Datasets Or Endpoints
+The most critical outputs identified during manual exploration are:
+1. **Raw Iceberg tables in `ol_warehouse_production_raw`**: this is the first durable landing zone for ingested source data.
+2. **The dbt transformation output rooted in `src/ol_dbt`**: `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` materializes the project as the `full_dbt_project` asset.
+3. **Reporting and mart-layer warehouse schemas**: `bin/dbt-local-dev.py` defines dependency-order registration for `raw`, `staging`, `intermediate`, `dimensional`, `mart`, `reporting`, and `external` databases.
+4. **Superset-backed datasets**: `AGENTS.md` documents automatic Superset dataset refresh when dbt models change.
+5. **`student_risk_probability_data_export_job`**: `dg_projects/student_risk_probability/student_risk_probability/definitions.py` defines a concrete downstream analytics export path.
 
-## 3. Blast Radius Analysis: `stg_orders.sql` failure
-If [models/staging/stg_orders.sql](https://github.com/dbt-labs/jaffle-shop/blob/main/models/staging/stg_orders.sql) fails to build:
-1.  **Direct Impact**: `models/orders.sql` will fail because it contains `from {{ ref('stg_orders') }}`.
-2.  **Downstream Impact**: Since `models/customers.sql` references `{{ ref('orders') }}`, it will also fail to calculate customer-level order aggregates.
-3.  **Total Result**: The entire business-facing "Mart" layer is effectively taken offline by a single staging failure.
+## 3. Blast Radius Analysis: `full_dbt_project` failure
+If `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` fails at the `full_dbt_project` asset:
+1. **Direct Impact**: the warehouse transformation layer in `src/ol_dbt` stops materializing.
+2. **Downstream Impact**: `dg_projects/lakehouse/lakehouse/definitions.py` cannot deliver a current Dagster lakehouse asset graph for downstream consumers.
+3. **Serving Impact**: Superset-backed datasets stop refreshing because `AGENTS.md` ties them to dbt model updates.
+4. **Business Result**: downstream jobs such as `student_risk_probability_data_export_job` risk exporting stale or missing warehouse-derived data.
 
 ## 4. Business Logic: Concentrated vs. Distributed
-- **Distributed (Transformation)**: Format cleaning and renaming are distributed across the `models/staging/` directory (e.g., `stg_customers.sql` renames `id` to `customer_id`).
-- **Concentrated (Calculation)**: Complex business logic (Current vs. Lifetime value) is concentrated in the root `models/` folder. Specifically, **`models/customers.sql`** contains the complex CTE logic for joining orders and payments to define the "Customer" entity.
+- **Distributed orchestration logic**: Python orchestration is spread across multiple Dagster code locations under `dg_projects/`, shared resources under `packages/ol-orchestrate-lib`, and ingestion utilities under `bin/`.
+- **Distributed environment logic**: data landing and environment-specific behavior are split across files such as `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/loads.py` and `dg_projects/lakehouse/lakehouse/definitions.py`.
+- **Concentrated business logic**: heavier reusable business semantics are concentrated in the dbt project under `src/ol_dbt`, especially the `models/intermediate/`, `models/marts/`, and `models/reporting/` layers documented in `AGENTS.md` and `src/ol_dbt/README.md`.
+- **Coordination point**: `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` is the key bridge where SQL models become orchestrated platform assets.
 
 ## 5. Most Frequent Changes (Last 90 Days)
-Based on git history:
-- **[models/schema.yml](https://github.com/dbt-labs/jaffle-shop/blob/main/models/schema.yml)**: Changes most frequently as new tests and documentation are added for every model tweak.
-- **[dbt_project.yml](https://github.com/dbt-labs/jaffle-shop/blob/main/dbt_project.yml)**: Frequent updates for versioning and package management.
-- **[models/staging/stg_payments.sql](https://github.com/dbt-labs/jaffle-shop/blob/main/models/staging/stg_payments.sql)**: Often modified to handle new payment methods or naming conventions.
+This answer is a manual inference based on visible recent repository activity, not a full `git log` audit.
+- **`src/ol_dbt/...` model files** are likely high-churn because the repository landing page showed a same-day fix to model logic: “Fix mitxonline program product and order models.”
+- **`bin/dbt-local-dev.py`** is likely high-churn because the repository recently added a DuckDB plus Iceberg local dbt workflow and this script is central to that developer path.
+- **`dg_projects/data_loading/...`** is likely high-churn because the repository recently added dlt-based EdX.org S3 ingestion.
+
+Strict scoring note:
+- A stricter version of this answer would still benefit from attaching an actual `git log` sample or validated Cartographer velocity output.
 
 ---
 
 ## DIFFICULTY ANALYSIS
 
 ### Manual Pain Points
-- **Tracing `ref()` Chains**: Manually figuring out which staging model feeds which mart model required opening 5+ SQL files simultaneously to build a mental map of the DAG. For example, to understand `customers.sql`, I had to trace back through `orders.sql`, then through `stg_orders.sql` and `stg_payments.sql`.
-- **Source-to-Table Mapping**: Connecting the `{{ source() }}` calls in `models/staging/` to the actual CSVs in `seeds/` was non-obvious without cross-referencing `models/sources.yml`.
-- **Blind Blast Radius**: Predicting that a change in `stg_orders.sql` would break `customers.sql` requires perfect knowledge of the entire project topology; a single missed `ref()` makes manual impact analysis unreliable.
+- **Python-to-SQL boundary tracing**: understanding one end-to-end path required moving from Python ingestion code in `dg_projects/data_loading/...` to Dagster lakehouse definitions and then into the dbt project under `src/ol_dbt`.
+- **Asset-to-warehouse mapping**: the repository makes it clear that Dagster, dbt, Airbyte, dlt, Glue, and Superset are all involved, but the exact operational chain is split across several directories and docs.
+- **Blind blast radius**: a single missed handoff between Python orchestration and dbt assets would produce the wrong downstream impact model.
 
 ### Cartographer Priorities
 These pain points inform why the **Brownfield Cartographer** must prioritize:
-1.  **Automated DAG Visualization**: Eliminating the "5-file open" requirement by showing immediate `ref()` neighbors.
-2.  **Unified SQL/YAML View**: Mapping the `sources.yml` definitions directly to the code that consumes them.
-3.  **Explosive Lineage**: A dedicated `blast_radius` command that recursively follows `ref()` calls to show exactly which downstream files are at risk.
+1. **Automated cross-stack DAG visualization** so a new engineer does not need multiple directories open to understand one pipeline.
+2. **Unified Python, SQL, and config lineage** so ingestion, transformation, and serving can be seen together.
+3. **Blast-radius analysis** so downstream impact is computed rather than remembered.

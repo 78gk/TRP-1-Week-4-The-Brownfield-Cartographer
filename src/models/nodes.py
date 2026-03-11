@@ -19,6 +19,7 @@ class ModuleNode(BaseModel):
     purpose_statement: Optional[str] = None  # filled by Semanticist later
     domain_cluster: Optional[str] = None  # filled by Semanticist later
     complexity_score: float = 0.0  # cyclomatic complexity
+    pagerank_score: float = 0.0
     lines_of_code: int = 0
     comment_ratio: float = 0.0  # comments / total lines
     change_velocity_30d: int = 0  # number of commits touching this file in last 30 days
@@ -44,11 +45,21 @@ class DatasetNode(BaseModel):
     node_type: Literal["dataset"] = "dataset"
     name: str  # fully qualified name (e.g., schema.table_name or file path)
     storage_type: Literal["table", "file", "stream", "api", "unknown"] = "unknown"
+    purpose_statement: Optional[str] = None
+    domain_cluster: Optional[str] = None
     schema_snapshot: Optional[dict] = None  # column names/types if known
     freshness_sla: Optional[str] = None  # e.g., "daily", "hourly"
     owner: Optional[str] = None  # team or person
     is_source_of_truth: bool = False
     source_file: Optional[str] = None  # file where this dataset is defined/created
+
+    @field_validator('storage_type')
+    @classmethod
+    def validate_storage_type(cls, v: str) -> str:
+        allowed = {'table', 'file', 'stream', 'api', 'unknown'}
+        if v not in allowed:
+            return 'unknown'
+        return v
 
 class FunctionNode(BaseModel):
     """Represents a function or method in the codebase."""
@@ -59,7 +70,9 @@ class FunctionNode(BaseModel):
     parent_module: str  # path to the containing module
     signature: str = ""  # full signature string
     purpose_statement: Optional[str] = None
+    domain_cluster: Optional[str] = None
     call_count_within_repo: int = 0  # how many times called from other modules
+    is_dead_code_candidate: bool = False
     is_public_api: bool = True  # not prefixed with _
     parameters: List[str] = Field(default_factory=list)
     return_type: Optional[str] = None
@@ -75,6 +88,20 @@ class TransformationNode(BaseModel):
     source_datasets: List[str] = Field(default_factory=list)  # input dataset names
     target_datasets: List[str] = Field(default_factory=list)  # output dataset names
     transformation_type: Literal["sql_query", "python_transform", "dbt_model", "dag_task", "unknown"] = "unknown"
+    purpose_statement: Optional[str] = None
+    domain_cluster: Optional[str] = None
     source_file: str = ""  # file containing this transformation
     line_range: tuple[int, int] = (0, 0)  # start, end line
     sql_query_if_applicable: Optional[str] = None  # the SQL text if SQL-based
+
+    @field_validator('line_range')
+    @classmethod
+    def validate_line_range(cls, v: tuple[int, int]) -> tuple[int, int]:
+        if len(v) != 2:
+            return (0, 0)
+        start, end = v
+        if start < 0 or end < 0:
+            return (0, 0)
+        if end and start and end < start:
+            return (start, start)
+        return v

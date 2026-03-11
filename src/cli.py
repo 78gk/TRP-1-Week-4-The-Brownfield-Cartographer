@@ -38,7 +38,7 @@ def analyze(target: str, output: str, verbose: bool):
             click.echo(f"  - {err}")
         sys.exit(1 if not results.get("surveyor") else 0)
     else:
-        click.echo("\n✅ Analysis complete! Check .cartography/ for outputs.")
+        click.echo(f"\n✅ Analysis complete! Check {output}/ for outputs.")
 
 
 if __name__ == "__main__":
