@@ -1,8 +1,10 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Any, Set, Tuple
+from typing import Dict, List, Any, Set, Tuple, Optional
+from datetime import datetime, timedelta
 import networkx as nx
+from git import Repo
 
 from src.graph.knowledge_graph import KnowledgeGraph
 from src.models.nodes import ModuleNode, FunctionNode, NodeType
@@ -14,7 +16,11 @@ from src.analyzers.dag_config_parser import DAGConfigParser
 logger = logging.getLogger(__name__)
 
 class SurveyorAgent:
-    """Agent that crawls a codebase and builds a structural knowledge graph."""
+    """Agent 1: The Surveyor - Static Structure Analyst.
+    
+    Crawl codebase using tree-sitter, build structural graph, and
+    compute architectural metrics (PageRank, Git Velocity, Dead Code).
+    """
 
     def __init__(self, kg: KnowledgeGraph):
         self.kg = kg
@@ -24,109 +30,174 @@ class SurveyorAgent:
 
     def analyze(self, dir_path: str) -> Dict[str, Any]:
         """Crawl the directory and populate the knowledge graph."""
-        root = Path(dir_path)
+        root = Path(dir_path).resolve()
         
-        # 1. Analyze code files
+        # 1. Initialize Git Repo if available
+        repo = None
+        try:
+            repo = Repo(dir_path, search_parent_directories=True)
+            logger.info("Surveyor: Git repository detected.")
+        except Exception:
+            logger.warning("Surveyor: No Git repository found. Velocity analysis will be skipped.")
+
+        # 2. Crawl and analyze files
         for file_path in root.rglob("*"):
             if any(p.startswith(".") for p in file_path.parts):
                 continue
             if "__pycache__" in file_path.parts:
                 continue
             
-            if file_path.suffix == ".py":
-                self._analyze_python_file(file_path)
-            elif file_path.suffix == ".sql":
-                self._analyze_sql_file(file_path)
+            ext = file_path.suffix.lower()
+            if ext in (".py", ".sql", ".yaml", ".yml"):
+                self._analyze_file(file_path, root, repo)
 
-        # 2. Analyze configs (dbt, Airflow metadata)
-        config_result = self.config_parser.analyze_directory(dir_path)
-        # For now, we'll focus on the summary metrics requested in validation
+        # 3. Analyze configs (dbt, Airflow metadata)
+        self.config_parser.analyze_directory(str(root))
         
-        # 3. Calculate metrics
-        summary = self._generate_summary()
+        # 4. Perform Advanced Graph Analytics
+        analytics = self._perform_structural_analytics()
+        
+        # 5. Generate Summary
+        summary = self._generate_summary(analytics)
         return summary
 
-    def _analyze_python_file(self, file_path: Path):
-        """Extract nodes and edges from a Python file."""
-        rel_path = str(file_path)
+    def _analyze_file(self, file_path: Path, root_path: Path, repo: Optional[Repo] = None):
+        """Extract nodes and metadata from a file."""
+        rel_path = str(file_path.relative_to(root_path))
+        ext = file_path.suffix.lower()
         
+        language = "unknown"
+        if ext == ".py": language = "python"
+        elif ext == ".sql": language = "sql"
+        elif ext in (".yaml", ".yml"): language = "yaml"
+
+        # Basic metrics
+        try:
+            with open(file_path, "r", encoding="utf-8", errors='replace') as f:
+                lines = f.readlines()
+                loc = len(lines)
+                comment_count = sum(1 for l in lines if l.strip().startswith(('#', '--', '/*')))
+                comment_ratio = comment_count / loc if loc > 0 else 0
+        except Exception:
+            loc, comment_ratio = 0, 0
+
+        # Git Velocity
+        velocity = 0
+        last_modified = None
+        if repo:
+            try:
+                # 30 day window
+                since = datetime.now() - timedelta(days=30)
+                commits = list(repo.iter_commits(paths=str(file_path), since=since))
+                velocity = len(commits)
+                if commits:
+                    last_modified = datetime.fromtimestamp(commits[0].committed_date)
+            except Exception as e:
+                logger.debug(f"Could not extract git velocity for {rel_path}: {e}")
+
         # Create/Add Module node
         module_node = ModuleNode(
             path=rel_path,
-            language="python"
+            language=language,
+            lines_of_code=loc,
+            comment_ratio=comment_ratio,
+            change_velocity_30d=velocity,
+            last_modified=last_modified
         )
-        self.kg.add_module_node(module_node)
         
         # Run TreeSitter analysis
         try:
             result = self.ts_analyzer.analyze_file(str(file_path))
+            module_node.public_functions = [f.name for f in result.functions if not f.name.startswith('_')]
+            module_node.classes = [c.name for c in result.classes]
+            module_node.imports = [i.module_path for i in result.imports]
             
-            # Add imports
+            # Add node to KG
+            self.kg.add_module_node(module_node)
+            
+            # Add imports to KG
             for imp in result.imports:
-                # Basic target module matching (simplified for now)
                 self.kg.add_import_edge(ImportEdge(
                     source=rel_path,
-                    target=imp.module_path,
-                    is_relative=imp.is_relative
+                    target=imp.module_path
                 ))
             
-            # Add functions
+            # Add functions as nodes
             for func in result.functions:
-                # We could add FunctionNodes here if needed
-                pass
+                fn_node = FunctionNode(
+                    qualified_name=f"{rel_path}:{func.name}",
+                    parent_module=rel_path,
+                    signature=func.signature,
+                    line_number=func.line_number,
+                    is_public_api=not func.name.startswith('_'),
+                    decorators=func.decorators
+                )
+                self.kg.add_function_node(fn_node)
                 
         except Exception as e:
             logger.error(f"Error analyzing {rel_path}: {e}")
+            self.kg.add_module_node(module_node)
 
-    def _analyze_sql_file(self, file_path: Path):
-        """Extract nodes and edges from a SQL file."""
-        rel_path = str(file_path)
+    def _perform_structural_analytics(self) -> Dict[str, Any]:
+        """Compute advanced metrics on the structural graph."""
+        import_subgraph = nx.DiGraph()
         
-        # Create Module node
-        module_node = ModuleNode(
-            path=rel_path,
-            language="sql"
-        )
-        self.kg.add_module_node(module_node)
+        edges = self.kg.get_edges_by_type(EdgeType.IMPORTS.value)
+        for u, v in edges:
+            import_subgraph.add_edge(u, v)
         
-        # Run SQL analysis
-        try:
-            lineage = self.sql_analyzer.analyze_file(str(file_path))
-            # Population logic could follow here for DatasetNodes etc.
-        except Exception as e:
-            logger.error(f"Error analyzing {rel_path}: {e}")
+        # Ensure all module nodes are in the subgraph
+        module_nodes = self.kg.get_module_nodes()
+        for path in module_nodes:
+            import_subgraph.add_node(path)
+            
+        # 1. PageRank (Hub Discovery)
+        pagerank = {}
+        if import_subgraph.number_of_nodes() > 0:
+            try:
+                pagerank = nx.pagerank(import_subgraph, weight='import_count')
+            except Exception:
+                pagerank = {n: 0.0 for n in import_subgraph.nodes()}
 
-    def _generate_summary(self) -> Dict[str, Any]:
+        # 2. Circular Dependencies (SCC)
+        circular_components = [list(c) for c in nx.strongly_connected_components(import_subgraph) if len(c) > 1]
+        
+        # 3. Dead Code Detection
+        # Candidates have out-degree (importing others) but in-degree is 0 (no one imports them)
+        # and they are not entry points or scripts.
+        dead_candidates = []
+        for node in import_subgraph.nodes():
+            if import_subgraph.in_degree(node) == 0:
+                # Flag in metadata
+                if node in module_nodes:
+                    node_model = module_nodes[node]
+                    node_model.is_dead_code_candidate = True
+                    dead_candidates.append(node)
+
+        # 4. High-Velocity Files (80/20 rule)
+        velocities = [(n, m.change_velocity_30d) for n, m in module_nodes.items()]
+        velocities.sort(key=lambda x: x[1], reverse=True)
+        top_20_count = max(1, len(velocities) // 5)
+        high_velocity_files = [v[0] for v in velocities[:top_20_count] if v[1] > 0]
+
+        return {
+            "pagerank": pagerank,
+            "circular_dependencies": circular_components,
+            "dead_code_candidates": dead_candidates,
+            "high_velocity_files": high_velocity_files
+        }
+
+    def _generate_summary(self, analytics: Dict[str, Any]) -> Dict[str, Any]:
         """Generate high-level summary and importance metrics."""
         summary = self.kg.summary()
         
-        # Calculate PageRank on the module import graph
-        # Filter edges for IMPORTS
-        import_subgraph = nx.DiGraph()
-        
-        nodes = self.kg._graph.nodes(data=True)
-        for u, v, d in self.kg._graph.edges(data=True):
-            if d.get("edge_type") == EdgeType.IMPORTS.value:
-                import_subgraph.add_edge(u, v)
-        
-        # Add all module nodes even if no edges
-        for node_id, data in nodes:
-            if data.get("node_type") == NodeType.MODULE.value:
-                import_subgraph.add_node(node_id)
-        
-        if import_subgraph.number_of_nodes() > 0:
-            try:
-                pagerank = nx.pagerank(import_subgraph)
-            except Exception:
-                # Fallback if graph is weird
-                pagerank = {n: 0.0 for n in import_subgraph.nodes()}
-        else:
-            pagerank = {}
-            
-        top_pagerank = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
+        top_pagerank = sorted(analytics["pagerank"].items(), key=lambda x: x[1], reverse=True)[:5]
         
         return {
             "total_modules": summary.get("module_nodes", 0),
             "total_import_edges": summary.get("edge_type_counts", {}).get(EdgeType.IMPORTS.value, 0),
-            "top_pagerank_modules": top_pagerank
+            "top_architectural_hubs": top_pagerank,
+            "circular_dependency_count": len(analytics["circular_dependencies"]),
+            "dead_code_candidate_count": len(analytics["dead_code_candidates"]),
+            "high_velocity_files": analytics["high_velocity_files"]
         }
