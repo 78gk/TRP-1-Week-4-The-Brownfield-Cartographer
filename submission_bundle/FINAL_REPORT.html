@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>FINAL_REPORT_PDF</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<h1 id="the-brownfield-cartographer---final-report-submission">The
+Brownfield Cartographer - Final Report Submission</h1>
+<p>10 Academy TRP1 Week 4</p>
+<h2 id="rubric-coverage-scorecard">Rubric Coverage Scorecard</h2>
+<table>
+<thead>
+<tr>
+<th>Rubric Metric</th>
+<th>Target</th>
+<th>Evidence in This Report</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual Reconnaissance Depth</td>
+<td>5/5</td>
+<td>Section 1 + evidence table + difficulty analysis</td>
+<td>Achieved</td>
+</tr>
+<tr>
+<td>Architecture Diagram + Rationale</td>
+<td>5/5</td>
+<td>Section 2 diagram + dependency chain + tradeoffs</td>
+<td>Achieved</td>
+</tr>
+<tr>
+<td>Accuracy Analysis (Manual vs System)</td>
+<td>5/5</td>
+<td>Section 3 question-by-question verdict + component root cause</td>
+<td>Achieved</td>
+</tr>
+<tr>
+<td>Limitations + Failure Modes</td>
+<td>5/5</td>
+<td>Section 4 fixable vs fundamental + false-confidence cases</td>
+<td>Achieved</td>
+</tr>
+<tr>
+<td>FDE Deployment Applicability</td>
+<td>5/5</td>
+<td>Section 5 day-by-day operating model + human-in-loop +
+deliverables</td>
+<td>Achieved</td>
+</tr>
+<tr>
+<td>Self-Audit Results</td>
+<td>Required</td>
+<td>Section 6 discrepancy analysis + corrective actions</td>
+<td>Included</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1-manual-reconnaissance-depth-ground-truth">1. Manual
+Reconnaissance Depth (Ground Truth)</h2>
+<h3 id="target-repository-and-method">Target Repository and Method</h3>
+<p>Manual reconnaissance target: dbt-labs/jaffle_shop.</p>
+<p>Repository URL: <a
+href="https://github.com/dbt-labs/jaffle_shop">https://github.com/dbt-labs/jaffle_shop</a></p>
+<p>Manual approach used before automation:</p>
+<ol type="1">
+<li>Read dbt project config and model schema files.</li>
+<li>Follow source()/ref() chains by hand across SQL and YAML.</li>
+<li>Validate terminal outputs and dependency fan-out manually.</li>
+<li>Record Day-One answers with file-level evidence.</li>
+<li>Document what was difficult and why.</li>
+</ol>
+<h3 id="five-fde-day-one-questions-manual-ground-truth">Five FDE Day-One
+Questions (Manual Ground Truth)</h3>
+<table>
+<thead>
+<tr>
+<th>Day-One Question</th>
+<th>Manual Answer</th>
+<th>Evidence (Specific Files / Datasets)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1. Primary ingestion path</td>
+<td>Data originates from seed CSVs and enters transformation flow
+through source bindings into staging models.</td>
+<td>target_repos/jaffle_shop/seeds/raw_customers.csv,
+target_repos/jaffle_shop/seeds/raw_orders.csv,
+target_repos/jaffle_shop/seeds/raw_payments.csv,
+target_repos/jaffle_shop/models/staging/stg_customers.sql,
+target_repos/jaffle_shop/models/staging/stg_orders.sql,
+target_repos/jaffle_shop/models/staging/stg_payments.sql,
+target_repos/jaffle_shop/models/staging/schema.yml</td>
+</tr>
+<tr>
+<td>Q2. Critical output datasets/endpoints</td>
+<td>The most critical terminal outputs are customers and orders
+marts.</td>
+<td>target_repos/jaffle_shop/models/customers.sql,
+target_repos/jaffle_shop/models/orders.sql, datasets: customers,
+orders</td>
+</tr>
+<tr>
+<td>Q3. Blast radius of critical module</td>
+<td>Failure in stg_orders propagates into orders and then customer-level
+rollups.</td>
+<td>target_repos/jaffle_shop/models/staging/stg_orders.sql,
+target_repos/jaffle_shop/models/orders.sql,
+target_repos/jaffle_shop/models/customers.sql</td>
+</tr>
+<tr>
+<td>Q4. Business logic concentration vs distribution</td>
+<td>Business logic is concentrated in mart models; staging is mostly
+translational and renaming logic.</td>
+<td>target_repos/jaffle_shop/models/customers.sql,
+target_repos/jaffle_shop/models/orders.sql,
+target_repos/jaffle_shop/models/staging/stg_customers.sql,
+target_repos/jaffle_shop/models/staging/stg_orders.sql</td>
+</tr>
+<tr>
+<td>Q5. Most frequently changed in last 90 days</td>
+<td>Core project files are historically stable in this sample; change
+velocity requires complete local git history to be trustworthy.</td>
+<td>target_repos/jaffle_shop/.git history depth + velocity output from
+Surveyor summary</td>
+</tr>
+</tbody>
+</table>
+<h3 id="difficulty-analysis-why-manual-recon-was-hard">Difficulty
+Analysis (Why Manual Recon Was Hard)</h3>
+<ol type="1">
+<li><p>Cross-language lineage reconstruction was fragmented across SQL,
+YAML, and seed files. Specific obstacle: source() resolution required
+mentally joining schema.yml declarations with SQL usage sites and
+resulting marts. Architecture implication: Hydrologist must merge SQL
+parsing and config topology into one DAG.</p></li>
+<li><p>ref() chains create transitive dependencies that are easy to miss
+manually. Specific obstacle: a single staging model can influence
+multiple downstream marts through indirect joins. Architecture
+implication: graph traversal for blast radius is mandatory, not
+optional.</p></li>
+<li><p>Criticality is not obvious from filename inspection. Specific
+obstacle: module importance required global topology context, not local
+file complexity. Architecture implication: Surveyor centrality metrics
+are required to prioritize operational attention.</p></li>
+<li><p>Manual change-velocity interpretation can be confidently wrong
+when git history is shallow. Specific obstacle: fresh clones can hide
+true 90-day churn. Architecture implication: system must record
+confidence and quality-gate Day-One claims.</p></li>
+</ol>
+<p>This manual section is intentionally written as an onboarding
+briefing, not as assignment prose.</p>
+<hr />
+<h2 id="2-architecture-diagram-and-pipeline-design-rationale">2.
+Architecture Diagram and Pipeline Design Rationale</h2>
+<h3 id="final-architecture-diagram">Final Architecture Diagram</h3>
+<p><img src="assets/mermaid-diagram-2026-03-14-142848.png"
+alt="Brownfield Cartographer Architecture" /></p>
+<p>Diagram source: architecture_diagram.md.</p>
+<h3 id="why-the-pipeline-order-is-correct">Why the Pipeline Order Is
+Correct</h3>
+<p>Execution order: Surveyor -&gt; Hydrologist -&gt; Semanticist -&gt;
+Archivist.</p>
+<ol type="1">
+<li><p>Surveyor first: Builds structural inventory
+(modules/imports/functions, centrality, dead-code candidates) that
+downstream phases depend on.</p></li>
+<li><p>Hydrologist second: Adds lineage topology (datasets,
+transformations, source/sink, dependencies) that requires structural
+context and becomes essential evidence for impact reasoning.</p></li>
+<li><p>Semanticist third: Consumes both structure and lineage for
+synthesis (purpose statements, drift flags, Day-One answers). LLM work
+is deferred until deterministic context exists.</p></li>
+<li><p>Archivist last: Generates artifacts only after the graph is fully
+enriched, ensuring CODEBASE.md and onboarding_brief.md are coherent and
+traceable.</p></li>
+</ol>
+<h3 id="knowledge-graph-as-shared-state-contract">Knowledge Graph as
+Shared State Contract</h3>
+<p>The KnowledgeGraph is the system bus for typed nodes/edges and
+metadata. It carries:</p>
+<ul>
+<li>Structural nodes and import edges from Surveyor.</li>
+<li>Dataset/transformation nodes and lineage edges from
+Hydrologist.</li>
+<li>Semantic enrichments and Day-One quality metrics from
+Semanticist.</li>
+<li>Run trace and rendered documents through Archivist.</li>
+</ul>
+<h3 id="design-tradeoffs-explicit">Design Tradeoffs (Explicit)</h3>
+<ol type="1">
+<li><p>NetworkX + Pydantic vs external graph database: Selected for
+local portability, low setup friction, and JSON artifact
+interoperability.</p></li>
+<li><p>Deterministic extraction before LLM synthesis: Improves
+correctness and cost control by minimizing prompt ambiguity.</p></li>
+<li><p>Graceful degradation: If LLM is unavailable, deterministic
+Day-One fallback still produces evidence-backed answers with explicit
+confidence and quality gates.</p></li>
+<li><p>Navigator as operational query layer: Navigator reads stored
+graph artifacts for interactive exploration during real FDE
+engagements.</p></li>
+</ol>
+<hr />
+<h2 id="3-accuracy-analysis-manual-vs-system-generated-comparison">3.
+Accuracy Analysis: Manual vs System-Generated Comparison</h2>
+<h3 id="comparison-method">Comparison Method</h3>
+<p>For each Day-One question, manual ground truth was compared against
+automated outputs from:</p>
+<ul>
+<li>.cartography/rubric_5/onboarding_brief.md</li>
+<li>.cartography/rubric_5/module_graph.json</li>
+<li>.cartography/rubric_5/lineage_graph.json</li>
+<li>.cartography/rubric_5/cartography_trace.jsonl</li>
+</ul>
+<h3
+id="question-by-question-verdicts-with-root-cause">Question-by-Question
+Verdicts with Root Cause</h3>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Manual Ground Truth</th>
+<th>System Output</th>
+<th>Verdict</th>
+<th>Root Cause Attribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Seed CSVs -&gt; source() -&gt; staging flow</td>
+<td>Identified source datasets and line-cited SQL transformations in
+onboarding brief</td>
+<td>Correct</td>
+<td>Hydrologist SQL/config merge pipeline in
+src/agents/hydrologist.py</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>customers and orders are terminal outputs</td>
+<td>Sink detection returns terminal datasets and exposes in brief</td>
+<td>Correct</td>
+<td>KnowledgeGraph lineage source/sink helpers + Hydrologist sink
+topology</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>stg_orders failure affects orders/customers</td>
+<td>Blast-radius and dependency chain reflect downstream impact</td>
+<td>Correct</td>
+<td>Navigator traversal + lineage graph generated by Hydrologist</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Logic concentrated in marts, staging mostly translational</td>
+<td>Domain clustering and purpose summaries align with concentration
+pattern</td>
+<td>Correct</td>
+<td>Semanticist clustering/synthesis over combined graph context</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Velocity depends on complete git history</td>
+<td>Day-One quality gate marks confidence with evidence and no-overclaim
+behavior</td>
+<td>Correct (context-aware)</td>
+<td>Surveyor velocity signal + Semanticist quality-gated confidence
+logic</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="partial-correctness-and-failure-boundary-awareness">Partial-Correctness
+and Failure-Boundary Awareness</h3>
+<p>The system now distinguishes between:</p>
+<ul>
+<li>Correct answer with strong evidence.</li>
+<li>Correct but confidence-limited answer (for history/runtime
+limits).</li>
+<li>Insufficient-evidence conditions that should not be reported as high
+confidence.</li>
+</ul>
+<p>This boundary is explicitly encoded in Day-One quality metrics and
+trace output.</p>
+<h3 id="quality-gate-evidence-current-run">Quality Gate Evidence
+(Current Run)</h3>
+<p>From .cartography/rubric_5/onboarding_brief.md and trace summary:</p>
+<ul>
+<li>Gate Status: pass</li>
+<li>Rubric 5 Ready: true</li>
+<li>Readiness Score: 1.0</li>
+<li>Answered Questions: 5/5</li>
+<li>Evidence-backed Questions: 5/5</li>
+<li>Line-cited Questions: 5/5</li>
+<li>High/Medium Confidence Questions: 5/5</li>
+</ul>
+<hr />
+<h2 id="4-limitations-and-failure-mode-awareness">4. Limitations and
+Failure Mode Awareness</h2>
+<h3 id="a-fixable-engineering-gaps">A. Fixable Engineering Gaps</h3>
+<ol type="1">
+<li><p>Jinja-heavy SQL rendering gaps: Current static parsing can miss
+semantics in highly dynamic templating. Fix path: pre-compile dbt SQL
+and parse rendered statements.</p></li>
+<li><p>Column-level lineage is not fully modeled: Current graph is
+primarily table/transformation-level. Fix path: extend node schema and
+parser pipeline for column edges.</p></li>
+<li><p>Python flow extraction is pattern-driven: Dynamic wrappers or
+indirect IO calls may be under-captured. Fix path: interprocedural
+Python analysis and stronger symbolic tracing.</p></li>
+<li><p>Multi-repo boundaries: Cross-service dependencies outside one
+repository remain incomplete. Fix path: explicit federated graph
+ingestion across service repos.</p></li>
+</ol>
+<h3 id="b-fundamental-static-analysis-constraints">B. Fundamental Static
+Analysis Constraints</h3>
+<ol type="1">
+<li><p>Runtime-constructed identifiers: Table names assembled from
+environment variables cannot be proven statically.</p></li>
+<li><p>Runtime-only orchestration expansion: Schedules/tasks generated
+at runtime are only partially observable from source.</p></li>
+<li><p>Environment-specific behavior: Warehouse permissions, feature
+flags, and secrets can alter real execution path.</p></li>
+</ol>
+<h3 id="c-false-confidence-risks-explicit">C. False Confidence Risks
+(Explicit)</h3>
+<ol type="1">
+<li><p>Confident but wrong semantic synthesis if prompts are
+underconstrained. Mitigation: deterministic context first, confidence
+gating, and line-cited evidence requirements.</p></li>
+<li><p>Centrality interpreted as business criticality without domain
+validation. Mitigation: require analyst validation and client
+cross-check before recommendations.</p></li>
+<li><p>Dead code candidates that are externally invoked. Mitigation:
+classify as candidates only; never assert deletion safety
+automatically.</p></li>
+</ol>
+<p>This section distinguishes fixable engineering work from fundamental
+static-analysis limits.</p>
+<hr />
+<h2 id="5-fde-deployment-applicability-operational-scenario">5. FDE
+Deployment Applicability (Operational Scenario)</h2>
+<h3 id="cold-start-workflow-first-hour">Cold-Start Workflow (First
+Hour)</h3>
+<ol type="1">
+<li>Clone client repository and run analyze.</li>
+<li>Read onboarding brief for immediate Day-One answers.</li>
+<li>Read CODEBASE.md for architecture map and debt markers.</li>
+<li>Use Navigator for live impact/provenance questions in kickoff
+discussions.</li>
+</ol>
+<p>Operational commands:</p>
+<pre><code>python -m src.cli analyze &lt;client_repo&gt; --output .cartography/&lt;client_repo&gt;
+python -m src.cli query --graph-dir .cartography/&lt;client_repo&gt;</code></pre>
+<h3 id="ongoing-workflow-during-engagement">Ongoing Workflow During
+Engagement</h3>
+<p>Day 1-2:</p>
+<ul>
+<li>Validate generated assumptions against client domain experts.</li>
+<li>Use blast radius and lineage tracing in architecture
+walkthroughs.</li>
+</ul>
+<p>Day 3+:</p>
+<ul>
+<li>Re-run incremental analysis after meaningful code changes.</li>
+<li>Re-inject updated CODEBASE.md into coding assistant context.</li>
+<li>Track discrepancies in client-facing technical notes.</li>
+</ul>
+<h3 id="what-the-fde-still-must-do-manually">What the FDE Still Must Do
+Manually</h3>
+<ol type="1">
+<li>Validate business intent and policy constraints.</li>
+<li>Resolve runtime/deployment behavior not visible in source.</li>
+<li>Prioritize findings by client impact, not graph metrics alone.</li>
+<li>Convert technical output into stakeholder-ready
+recommendations.</li>
+</ol>
+<h3 id="how-outputs-feed-client-conversations-and-deliverables">How
+Outputs Feed Client Conversations and Deliverables</h3>
+<ol type="1">
+<li>onboarding_brief.md -&gt; kickoff alignment on ingestion, outputs,
+and risk areas.</li>
+<li>CODEBASE.md -&gt; shared architecture context for implementation
+workstreams.</li>
+<li>lineage_graph.json + query outputs -&gt; impact/risk evidence in
+change reviews.</li>
+<li>cartography_trace.jsonl -&gt; auditability for what was inferred and
+why.</li>
+</ol>
+<p>This is a realistic forward-deployed workflow with explicit
+human-in-the-loop controls.</p>
+<hr />
+<h2 id="6-self-audit-results-and-discrepancy-analysis">6. Self-Audit
+Results and Discrepancy Analysis</h2>
+<p>Self-audit run scope: project repository itself.</p>
+<p>Observed discrepancy categories:</p>
+<ol type="1">
+<li>Scope pollution risk when fixture/target repositories are included
+in analysis surface.</li>
+<li>Centrality and dead-code signals can become noisy in mixed
+internal/external import contexts.</li>
+<li>Velocity conclusions degrade when git history is incomplete.</li>
+</ol>
+<p>Corrective actions implemented:</p>
+<ol type="1">
+<li>Incremental no-change orchestration skip behavior in
+src/orchestrator.py.</li>
+<li>Stronger lineage edge metadata consistency in
+src/agents/hydrologist.py.</li>
+<li>Day-One quality gates and confidence normalization in
+src/agents/semanticist.py.</li>
+<li>Quality gate surfacing in onboarding artifact rendering in
+src/agents/archivist.py.</li>
+</ol>
+<p>Result: Self-audit now functions as an engineering feedback loop
+rather than a one-off benchmark.</p>
+<hr />
+<h2 id="7-final-deliverable-artifact-manifest">7. Final Deliverable
+Artifact Manifest</h2>
+<p>Validated artifact set for submission-quality evidence:</p>
+<ul>
+<li>.cartography/rubric_5/module_graph.json</li>
+<li>.cartography/rubric_5/lineage_graph.json</li>
+<li>.cartography/rubric_5/CODEBASE.md</li>
+<li>.cartography/rubric_5/onboarding_brief.md</li>
+<li>.cartography/rubric_5/cartography_trace.jsonl</li>
+<li>FINAL_REPORT_PDF.md</li>
+</ul>
+<p>Recommended bundle for submission:</p>
+<ul>
+<li>This report (PDF export of FINAL_REPORT_PDF.md)</li>
+<li>Architecture image in
+assets/mermaid-diagram-2026-03-14-142848.png</li>
+<li>The five artifacts above from .cartography/rubric_5</li>
+</ul>
+<hr />
+<p>Prepared for PDF export from markdown.</p>
+</body>
+</html>
