@@ -28,9 +28,16 @@ class SurveyorAgent:
         self.sql_analyzer = SQLLineageAnalyzer()
         self.config_parser = DAGConfigParser()
 
-    def analyze(self, dir_path: str) -> Dict[str, Any]:
+    def analyze(self, dir_path: str, target_files: Optional[List[str]] = None) -> Dict[str, Any]:
         """Crawl the directory and populate the knowledge graph."""
         root = Path(dir_path).resolve()
+        scoped_files: Optional[Set[str]] = None
+        if target_files is not None:
+            scoped_files = {
+                str(Path(p).as_posix()).lstrip("./")
+                for p in target_files
+                if Path(p).suffix.lower() in (".py", ".sql", ".yaml", ".yml")
+            }
         
         # 1. Initialize Git Repo if available
         repo = None
@@ -49,6 +56,9 @@ class SurveyorAgent:
             
             ext = file_path.suffix.lower()
             if ext in (".py", ".sql", ".yaml", ".yml"):
+                rel_norm = str(file_path.relative_to(root)).replace('\\', '/')
+                if scoped_files is not None and rel_norm not in scoped_files:
+                    continue
                 self._analyze_file(file_path, root, repo)
 
         # 3. Analyze configs (dbt, Airflow metadata)

@@ -30,6 +30,11 @@ class ArchivistAgent:
     def run(self) -> None:
         """Full archivist pipeline execution."""
         logger.info("Starting Archivist Agent execution...")
+
+        # Import upstream agent trace entries captured by the orchestrator.
+        for entry in self.knowledge_graph.metadata.get("agent_action_trace", []):
+            if isinstance(entry, dict):
+                self._trace_entries.append(entry)
         
         self.log_trace(
             agent_name="Archivist", 
@@ -49,13 +54,15 @@ class ArchivistAgent:
              self.log_trace("Archivist", "execution_failed", "system", "high", {"error": str(e)})
 
     def log_trace(self, agent_name: str, action: str, evidence_source: str, 
-                  confidence: str = "high", details: Optional[Dict] = None) -> None:
+                  confidence: str = "high", details: Optional[Dict] = None,
+                  analysis_method: str = "static") -> None:
         """Append an audit trace entry for actions taken by the intelligence system."""
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent": agent_name,
             "action": action,
             "evidence_source": evidence_source,
+            "analysis_method": analysis_method,
             "confidence": confidence,
             "details": details or {}
         }

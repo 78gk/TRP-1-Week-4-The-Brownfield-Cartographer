@@ -292,7 +292,27 @@ class SemanticistAgent:
             return {
                 "questions": [
                     {
-                        "question": "What is the primary data ingestion path?",
+                        "question": "1. What is the primary data ingestion path?",
+                        "answer": "Answer unavailable: Requires LLM API configuration.",
+                        "evidence_files": [], "evidence_source": "system", "confidence": "low"
+                    },
+                    {
+                        "question": "2. What are the 3-5 most critical output datasets/endpoints?",
+                        "answer": "Answer unavailable: Requires LLM API configuration.",
+                        "evidence_files": [], "evidence_source": "system", "confidence": "low"
+                    },
+                    {
+                        "question": "3. What is the blast radius if the most critical module fails?",
+                        "answer": "Answer unavailable: Requires LLM API configuration.",
+                        "evidence_files": [], "evidence_source": "system", "confidence": "low"
+                    },
+                    {
+                        "question": "4. Where is the business logic concentrated vs. distributed?",
+                        "answer": "Answer unavailable: Requires LLM API configuration.",
+                        "evidence_files": [], "evidence_source": "system", "confidence": "low"
+                    },
+                    {
+                        "question": "5. What has changed most frequently in the last 90 days?",
                         "answer": "Answer unavailable: Requires LLM API configuration.",
                         "evidence_files": [], "evidence_source": "system", "confidence": "low"
                     }
@@ -312,6 +332,18 @@ class SemanticistAgent:
         if hasattr(self.knowledge_graph, "get_lineage_sinks"):
             sinks = [n.name for n in getattr(self.knowledge_graph, "get_lineage_sinks")()]
 
+        evidence_line_hints: List[str] = []
+        if hasattr(self.knowledge_graph, "get_function_nodes"):
+            for _, fn in self.knowledge_graph.get_function_nodes().items():
+                if fn.line_number > 0:
+                    evidence_line_hints.append(f"{fn.parent_module}:{fn.line_number}")
+        if hasattr(self.knowledge_graph, "get_transformation_nodes"):
+            for _, t in self.knowledge_graph.get_transformation_nodes().items():
+                start, _ = t.line_range
+                if t.source_file and start > 0:
+                    evidence_line_hints.append(f"{t.source_file}:{start}")
+        evidence_line_hints = sorted(set(evidence_line_hints))[:200]
+
         circ_deps = []
         if hasattr(self.knowledge_graph, "get_circular_dependencies"):
            circ_deps = getattr(self.knowledge_graph, "get_circular_dependencies")()
@@ -330,6 +362,7 @@ class SemanticistAgent:
             f"Module Purpose Statements:\n{purpose_statements_summary}\n\n"
             f"Domain Clusters:\n{clusters_summary}\n\n"
             f"Circular Dependencies:\n{circ_deps}\n\n"
+            f"Evidence Line Hints (file:line):\n{evidence_line_hints}\n\n"
             f"QUESTIONS:\n"
             f"1. What is the primary data ingestion path? (Cite specific files and data sources)\n"
             f"2. What are the 3-5 most critical output datasets/endpoints? (Cite specific tables/files)\n"
@@ -338,6 +371,7 @@ class SemanticistAgent:
             f"5. What has changed most frequently in the last 90 days? (Reference git velocity data)\n\n"
             f"For each answer, include:\n"
             f"- Specific file paths\n"
+            f"- File line citations as file:line when available\n"
             f"- Evidence source (static analysis, SQL parsing, git history, or LLM inference)\n"
             f"- Confidence level (high/medium/low)\n\n"
             f"Respond in JSON format:\n"

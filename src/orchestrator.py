@@ -44,6 +44,7 @@ class CartographyOrchestrator:
         self.incremental = incremental
         
         self.knowledge_graph = KnowledgeGraph()
+        self.knowledge_graph.metadata.setdefault("agent_action_trace", [])
         
         # Ensure output dict
         out_path = Path(self.repo_path) / self.output_dir
@@ -62,8 +63,16 @@ class CartographyOrchestrator:
              changed_files = self._get_changed_files()
              if changed_files is not None:
                   logger.info(f"Incremental mode active: analyzing {len(changed_files)} changed files.")
+                  self._load_previous_graph_state()
              else:
                   logger.warning("Incremental mode requested, but no prior run metadata found. Falling back to full analysis.")
+
+        analysis_scope = None
+        if changed_files is not None:
+            analysis_scope = [
+                p for p in changed_files
+                if Path(self.repo_path, p).exists()
+            ]
                   
         # 1. Pipeline execution flags
         run_semanticist = SEMANTICIST_AVAILABLE and not self.skip_semantics
@@ -73,29 +82,36 @@ class CartographyOrchestrator:
         # --- Surveyor Agent ---
         try:
             logger.info("Executing Phase 1: Surveyor Agent...")
+            self._record_agent_action("Surveyor", "started", "static_analysis", "static")
             # Current Surveyor API takes a KnowledgeGraph and exposes analyze(repo_path).
             surveyor = SurveyorAgent(self.knowledge_graph)
-            surveyor_summary = surveyor.analyze(self.repo_path)
+            surveyor_summary = surveyor.analyze(self.repo_path, target_files=analysis_scope)
             self.results_summary["surveyor"] = surveyor_summary
+            self._record_agent_action("Surveyor", "completed", "static_analysis", "static", details=surveyor_summary)
         except Exception as e:
             logger.error(f"Surveyor Agent failed: {e}")
             self.results_summary["surveyor"] = {"error": str(e)}
+            self._record_agent_action("Surveyor", "failed", "static_analysis", "static", confidence="high", details={"error": str(e)})
 
         # --- Hydrologist Agent ---
         try:
             logger.info("Executing Phase 2: Hydrologist Agent...")
+            self._record_agent_action("Hydrologist", "started", "sql_parsing", "static")
             # Current Hydrologist API takes a KnowledgeGraph and exposes analyze(repo_path).
             hydro = HydrologistAgent(self.knowledge_graph)
-            hydrologist_summary = hydro.analyze(self.repo_path)
+            hydrologist_summary = hydro.analyze(self.repo_path, target_files=analysis_scope)
             self.results_summary["hydrologist"] = hydrologist_summary
+            self._record_agent_action("Hydrologist", "completed", "sql_parsing", "static", details=hydrologist_summary)
         except Exception as e:
             logger.error(f"Hydrologist Agent failed: {e}")
             self.results_summary["hydrologist"] = {"error": str(e)}
+            self._record_agent_action("Hydrologist", "failed", "sql_parsing", "static", confidence="high", details={"error": str(e)})
 
         # --- Semanticist Agent ---
         if run_semanticist:
              try:
                  logger.info("Executing Phase 3: Semanticist Agent...")
+                 self._record_agent_action("Semanticist", "started", "llm_inference", "llm")
                  semanticist = SemanticistAgent(
                      self.repo_path, 
                      self.knowledge_graph,
@@ -103,22 +119,28 @@ class CartographyOrchestrator:
                  )
                  self.knowledge_graph = semanticist.run()
                  self.results_summary["semanticist"] = semanticist.get_summary()
+                 self._record_agent_action("Semanticist", "completed", "llm_inference", "llm", details=self.results_summary["semanticist"])
              except Exception as e:
                  logger.error(f"Semanticist Agent failed: {e}")
                  self.results_summary["semanticist"] = {"error": str(e)}
+                 self._record_agent_action("Semanticist", "failed", "llm_inference", "llm", confidence="medium", details={"error": str(e)})
         else:
              logger.info("Skipping Semanticist validation phase.")
              self.results_summary["semanticist"] = "Skipped"
+             self._record_agent_action("Semanticist", "skipped", "system", "static", confidence="high")
 
         # --- Archivist Agent ---
         try:
             logger.info("Executing Phase 4: Archivist Agent...")
+            self._record_agent_action("Archivist", "started", "system", "static")
             archivist = ArchivistAgent(self.repo_path, self.knowledge_graph, output_dir=self.output_dir)
             archivist.run()
             self.results_summary["archivist"] = "Artifacts generated successfully"
+            self._record_agent_action("Archivist", "completed", "system", "static")
         except Exception as e:
             logger.error(f"Archivist Agent failed: {e}")
             self.results_summary["archivist"] = {"error": str(e)}
+            self._record_agent_action("Archivist", "failed", "system", "static", details={"error": str(e)})
             
         # 3. Finalization
         try:
@@ -185,6 +207,19 @@ class CartographyOrchestrator:
              logger.warning(f"Failed to read historical metadata for incremental check: {e}")
              return None
 
+    def _load_previous_graph_state(self) -> None:
+        """Load prior run graph artifacts so incremental updates can patch changed files only."""
+        out = Path(self.repo_path) / self.output_dir
+        module_graph_path = out / "module_graph.json"
+        lineage_graph_path = out / "lineage_graph.json"
+        try:
+            if module_graph_path.exists() and hasattr(self.knowledge_graph, "deserialize_module_graph"):
+                self.knowledge_graph.deserialize_module_graph(module_graph_path)
+            if lineage_graph_path.exists() and hasattr(self.knowledge_graph, "deserialize_lineage_graph"):
+                self.knowledge_graph.deserialize_lineage_graph(lineage_graph_path)
+        except Exception as e:
+            logger.warning(f"Could not preload previous graph state for incremental analysis: {e}")
+
     def _save_run_metadata(self) -> None:
         """Cache the current HEAD and timestamp metadata."""
         meta_file = Path(self.repo_path) / self.output_dir / ".last_run.json"
@@ -227,6 +262,25 @@ class CartographyOrchestrator:
             self.knowledge_graph.serialize_lineage_graph(str(loc))
             sz = loc.stat().st_size if loc.exists() else 0
             logger.info(f"Serialized lineage graph -> {loc} ({sz} bytes)")
+
+    def _record_agent_action(
+        self,
+        agent: str,
+        action: str,
+        evidence_source: str,
+        analysis_method: str,
+        confidence: str = "high",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.knowledge_graph.metadata.setdefault("agent_action_trace", []).append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent": agent,
+            "action": action,
+            "evidence_source": evidence_source,
+            "analysis_method": analysis_method,
+            "confidence": confidence,
+            "details": details or {},
+        })
 
     def get_results_summary(self) -> Dict[str, Any]:
         """Provide finalized execution tracking summary dictionary."""

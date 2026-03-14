@@ -1,4 +1,6 @@
 import logging
+import math
+import re
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Tuple
 import networkx as nx
@@ -29,6 +31,7 @@ class ToolResult:
     query: str
     result: Any
     evidence_files: List[str]
+    evidence_ranges: List[str]
     evidence_source: str  # "static_analysis" | "graph_traversal" | "llm_inference" | "vector_search"
     confidence: str  # "high" | "medium" | "low"
     explanation: str
@@ -49,6 +52,7 @@ class NavigatorAgent:
     def find_implementation(self, concept: str) -> ToolResult:
         """Find where a concept is implemented in the codebase."""
         concept_lower = concept.lower()
+        query_vec = self._text_to_vector(concept_lower)
         matches = []
         
         for node in self.knowledge_graph.get_all_nodes():
@@ -62,6 +66,18 @@ class NavigatorAgent:
             if concept_lower in node.path.lower():
                 score += 10
                 match_reasons.append(f"Path matched '{concept}'")
+
+            # Simple semantic similarity over path/classes/functions/purpose text.
+            candidate_text = " ".join([
+                node.path,
+                " ".join(node.classes or []),
+                " ".join(node.public_functions or []),
+                node.purpose_statement or "",
+            ]).lower()
+            semantic_score = self._cosine_similarity(query_vec, self._text_to_vector(candidate_text))
+            if semantic_score > 0.0:
+                score += semantic_score * 8.0
+                match_reasons.append(f"Semantic similarity={semantic_score:.2f}")
                 
             # Class name match
             if node.classes and any(concept_lower in c.lower() for c in node.classes):
@@ -82,7 +98,8 @@ class NavigatorAgent:
                 matches.append({
                     "node": node,
                     "score": score,
-                    "reasons": match_reasons
+                    "reasons": match_reasons,
+                    "range": "L1"
                 })
                 
         # Sort by relevance
@@ -90,6 +107,7 @@ class NavigatorAgent:
         top_matches = matches[:5]
         
         files_cited = [m["node"].path for m in top_matches]
+        ranges_cited = [f"{m['node'].path}:{m.get('range', 'L1')}" for m in top_matches]
         
         if top_matches:
             explanation = "Found implementations ranked by relevance:\n"
@@ -106,7 +124,8 @@ class NavigatorAgent:
             query=concept,
             result=top_matches,
             evidence_files=files_cited,
-            evidence_source="static_analysis",  # Could be vector_search if we had embeddings
+            evidence_ranges=ranges_cited,
+            evidence_source="vector_search",
             confidence="high" if top_matches and top_matches[0]["score"] >= 5 else "low",
             explanation=explanation
         )
@@ -118,6 +137,7 @@ class NavigatorAgent:
         if not hasattr(self.knowledge_graph, "lineage_graph") or not self.knowledge_graph.lineage_graph:
             return ToolResult(
                 tool_name="trace_lineage", query=dataset_name, result=[], evidence_files=[],
+                evidence_ranges=[],
                 evidence_source="graph_traversal", confidence="low",
                 explanation="No lineage graph available in the knowledge graph dataset."
             )
@@ -133,12 +153,14 @@ class NavigatorAgent:
                  else:
                      return ToolResult(
                          tool_name="trace_lineage", query=dataset_name, result=[], evidence_files=[],
+                         evidence_ranges=[],
                          evidence_source="graph_traversal", confidence="high",
                          explanation=f"Dataset '{dataset_name}' not found in the lineage graph."
                      )
                      
              lineage = []
              evidence = []
+             evidence_ranges = []
              
              if direction == "upstream":
                  ancestors = nx.ancestors(G, target_node)
@@ -148,9 +170,15 @@ class NavigatorAgent:
                  explanation = f"Upstream lineage for '{target_node}':\n"
                  for src, tgt, data in path_edges:
                      file_ref = G.edges[src, tgt].get('source_file', 'unknown')
+                     line_range = G.edges[src, tgt].get('line_range') or G.edges[src, tgt].get('line_number')
                      trans_type = G.edges[src, tgt].get('transformation_type', 'derived')
                      lineage.append((src, tgt, file_ref))
                      evidence.append(file_ref)
+                     if file_ref != 'unknown' and line_range is not None:
+                         if isinstance(line_range, (list, tuple)) and len(line_range) == 2:
+                             evidence_ranges.append(f"{file_ref}:L{line_range[0]}-L{line_range[1]}")
+                         else:
+                             evidence_ranges.append(f"{file_ref}:L{line_range}")
                      explanation += f"- {src} -> {tgt} (via {trans_type} in {file_ref})\n"
                      
              else: # downstream
@@ -161,9 +189,15 @@ class NavigatorAgent:
                  explanation = f"Downstream lineage from '{target_node}':\n"
                  for src, tgt, data in path_edges:
                      file_ref = G.edges[src, tgt].get('source_file', 'unknown')
+                     line_range = G.edges[src, tgt].get('line_range') or G.edges[src, tgt].get('line_number')
                      trans_type = G.edges[src, tgt].get('transformation_type', 'derived')
                      lineage.append((src, tgt, file_ref))
                      evidence.append(file_ref)
+                     if file_ref != 'unknown' and line_range is not None:
+                         if isinstance(line_range, (list, tuple)) and len(line_range) == 2:
+                             evidence_ranges.append(f"{file_ref}:L{line_range[0]}-L{line_range[1]}")
+                         else:
+                             evidence_ranges.append(f"{file_ref}:L{line_range}")
                      explanation += f"- {src} -> {tgt} (via {trans_type} in {file_ref})\n"
                      
              if not lineage:
@@ -174,6 +208,7 @@ class NavigatorAgent:
                  query=f"{dataset_name} ({direction})",
                  result=lineage,
                  evidence_files=list(set([f for f in evidence if f != "unknown"])),
+                 evidence_ranges=sorted(set(evidence_ranges))[:10],
                  evidence_source="graph_traversal",
                  confidence="high",
                  explanation=explanation
@@ -182,6 +217,7 @@ class NavigatorAgent:
             logger.error(f"Error tracing lineage: {e}")
             return ToolResult(
                 tool_name="trace_lineage", query=dataset_name, result=str(e), evidence_files=[],
+                evidence_ranges=[],
                 evidence_source="graph_traversal", confidence="low", explanation=f"Traversal error: {e}"
             )
 
@@ -243,12 +279,14 @@ class NavigatorAgent:
              explanation += f"  - {d}\n"
              
         evidence = [m["path"] for m in affected_modules]
+        evidence_ranges = [f"{m['path']}:L1" for m in affected_modules[:10]]
         
         return ToolResult(
              tool_name="blast_radius",
              query=module_path,
              result={"modules": affected_modules, "datasets": list(affected_datasets)},
              evidence_files=evidence[:10],
+               evidence_ranges=evidence_ranges,
              evidence_source="graph_traversal",
              confidence="high",
              explanation=explanation
@@ -270,6 +308,7 @@ class NavigatorAgent:
         if not matched_node:
              return ToolResult(
                  tool_name="explain_module", query=path, result=None, evidence_files=[],
+                 evidence_ranges=[],
                  evidence_source="static_analysis", confidence="high",
                  explanation=f"Module matching '{path}' not found in the parsed knowledge graph."
              )
@@ -305,6 +344,7 @@ class NavigatorAgent:
                  
         return ToolResult(
             tool_name="explain_module", query=path, result=matched_node, evidence_files=[matched_node.path],
+            evidence_ranges=[f"{matched_node.path}:L1"],
             evidence_source=evidence_src, confidence="high", explanation=explanation
         )
 
@@ -323,9 +363,39 @@ class NavigatorAgent:
                  return lg_result
                  
         # --- Heuristic Keyword Routing Fallback ---
-        
         subject = self._extract_subject(q)
         
+        # Basic multi-step chaining: ask for impacted modules and then explain the top hit.
+        if any(w in q for w in ["then explain", "and explain"]):
+            base_query = re.sub(r"\s+(and|then)\s+explain.*$", "", q).strip()
+            base_subject = self._extract_subject(base_query)
+            base = self.blast_radius(base_subject)
+            modules = base.result.get("modules", []) if isinstance(base.result, dict) else []
+            if modules:
+                followup = self.explain_module(modules[0]["path"])
+                return ToolResult(
+                    tool_name="blast_radius+explain_module",
+                    query=user_query,
+                    result={"blast_radius": base.result, "explain_module": followup.result},
+                    evidence_files=list(dict.fromkeys(base.evidence_files + followup.evidence_files)),
+                    evidence_ranges=list(dict.fromkeys(base.evidence_ranges + followup.evidence_ranges)),
+                    evidence_source="graph_traversal",
+                    confidence="high",
+                    explanation=base.explanation + "\n\nFollow-up explanation:\n" + followup.explanation,
+                )
+            # If no downstream modules are found, still explain the directly referenced target.
+            followup = self.explain_module(base_subject)
+            return ToolResult(
+                tool_name="blast_radius+explain_module",
+                query=user_query,
+                result={"blast_radius": base.result, "explain_module": followup.result},
+                evidence_files=list(dict.fromkeys(base.evidence_files + followup.evidence_files)),
+                evidence_ranges=list(dict.fromkeys(base.evidence_ranges + followup.evidence_ranges)),
+                evidence_source="graph_traversal",
+                confidence=base.confidence,
+                explanation=base.explanation + "\n\nFollow-up explanation:\n" + followup.explanation,
+            )
+
         if any(w in q for w in ["lineage", "upstream", "downstream", "produces", "consumes", "feeds", "parent", "child"]):
              direction = "downstream" if "downstream" in q or "produces" in q or "feeds" in q else "upstream"
              return self.trace_lineage(subject, direction)
@@ -341,11 +411,37 @@ class NavigatorAgent:
              
         return self.find_implementation(subject) # default
 
+    def _text_to_vector(self, text: str) -> Dict[str, float]:
+        tokens = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", text.lower())
+        if not tokens:
+            return {}
+        total = float(len(tokens))
+        vec: Dict[str, float] = {}
+        for t in tokens:
+            vec[t] = vec.get(t, 0.0) + 1.0 / total
+        return vec
+
+    def _cosine_similarity(self, a: Dict[str, float], b: Dict[str, float]) -> float:
+        if not a or not b:
+            return 0.0
+        dot = 0.0
+        for k, va in a.items():
+            dot += va * b.get(k, 0.0)
+        norm_a = math.sqrt(sum(v * v for v in a.values()))
+        norm_b = math.sqrt(sum(v * v for v in b.values()))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
     def _extract_subject(self, query: str) -> str:
         """Naive NLP extraction to find the target of the query."""
         q = query.lower()
+        path_match = re.search(r"([\w\-/\.]+\.(?:py|sql|ya?ml|json|md))", q)
+        if path_match:
+            return path_match.group(1)
+
         stopwords = ["where", "is", "the", "find", "implementation", "of", "what", "does", "explain", "describe", 
-                     "lineage", "for", "blast", "radius", "breaks", "if", "i", "change", "upstream", "downstream", "module", "file", "table", "dataset"]
+                     "lineage", "for", "blast", "radius", "breaks", "if", "i", "change", "upstream", "downstream", "module", "file", "table", "dataset", "and", "then"]
                      
         words = q.replace("?", "").replace("'", "").replace('"', '').split()
         target_words = [w for w in words if w not in stopwords]
@@ -379,6 +475,8 @@ class NavigatorAgent:
         out = f"\nTool: {result.tool_name}\n"
         out += f"Results:\n{result.explanation}\n"
         out += f"\nEvidence: {', '.join(result.evidence_files[:3])}{'...' if len(result.evidence_files)>3 else ''}\n"
+        if result.evidence_ranges:
+            out += f"Line ranges: {', '.join(result.evidence_ranges[:3])}{'...' if len(result.evidence_ranges)>3 else ''}\n"
         out += f"  [{src_map.get(result.evidence_source, result.evidence_source)}, {confidence_emoji.get(result.confidence, '')} {result.confidence} confidence]\n"
         return out
 

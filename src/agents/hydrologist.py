@@ -64,8 +64,9 @@ class HydrologistAgent:
         self.dag_parser = DAGConfigParser()
         self.ts_analyzer = TreeSitterAnalyzer()
         self._lineage_graph = nx.DiGraph()
+        self._dynamic_references: List[Dict[str, Any]] = []
     
-    def analyze(self, repo_path: str) -> Dict[str, Any]:
+    def analyze(self, repo_path: str, target_files: Optional[List[str]] = None) -> Dict[str, Any]:
         """Run the full Hydrologist analysis pipeline.
         
         Returns a summary dict of results.
@@ -75,15 +76,15 @@ class HydrologistAgent:
         
         # Source 1: SQL lineage
         logger.info("Hydrologist: Step 1/4 - Analyzing SQL dependencies...")
-        sql_result = self._analyze_sql_lineage(str(repo_root))
+        sql_result = self._analyze_sql_lineage(str(repo_root), target_files=target_files)
         
         # Source 2: Python data flow
         logger.info("Hydrologist: Step 2/4 - Analyzing Python data flow...")
-        python_flows = self._analyze_python_data_flow(str(repo_root))
+        python_flows = self._analyze_python_data_flow(str(repo_root), target_files=target_files)
         
         # Source 3: DAG/config topology
         logger.info("Hydrologist: Step 3/4 - Analyzing pipeline configs...")
-        config_result = self._analyze_config_topology(str(repo_root))
+        config_result = self._analyze_config_topology(str(repo_root), target_files=target_files)
         
         # Merge all sources
         logger.info("Hydrologist: Step 4/4 - Merging lineage sources...")
@@ -99,6 +100,7 @@ class HydrologistAgent:
             "sql_dependencies_found": len(sql_result.dependencies),
             "sql_dbt_refs_found": len(sql_result.dbt_refs),
             "python_data_flows_found": len(python_flows),
+            "dynamic_references_unresolved": len(self._dynamic_references),
             "config_pipelines_found": len(config_result.pipelines),
             "data_sources": sources,
             "data_sinks": sinks,
@@ -113,17 +115,39 @@ class HydrologistAgent:
         
         return summary
     
-    def _analyze_sql_lineage(self, repo_path: str) -> SQLLineageResult:
+    def _analyze_sql_lineage(self, repo_path: str, target_files: Optional[List[str]] = None) -> SQLLineageResult:
         """Run sqlglot analysis on all SQL files."""
         try:
-            return self.sql_analyzer.analyze_directory(repo_path)
+            result = self.sql_analyzer.analyze_directory(repo_path)
+            if target_files is None:
+                return result
+
+            scoped = {
+                str(Path(p).as_posix()).lstrip("./")
+                for p in target_files
+                if Path(p).suffix.lower() == ".sql"
+            }
+            if not scoped:
+                return SQLLineageResult()
+
+            result.dependencies = [d for d in result.dependencies if d.source_file in scoped]
+            result.dbt_refs = [r for r in result.dbt_refs if r.source_file in scoped]
+            result.files_analyzed = len({d.source_file for d in result.dependencies})
+            return result
         except Exception as e:
             logger.error(f"SQL lineage analysis failed: {e}")
             return SQLLineageResult(errors=[str(e)])
     
-    def _analyze_python_data_flow(self, repo_path: str) -> List[Dict[str, Any]]:
+    def _analyze_python_data_flow(self, repo_path: str, target_files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Detect data read/write operations in Python files."""
         flows = []
+        scoped_files: Optional[Set[str]] = None
+        if target_files is not None:
+            scoped_files = {
+                str(Path(p).as_posix()).lstrip("./")
+                for p in target_files
+                if Path(p).suffix.lower() == ".py"
+            }
         
         for py_file in sorted(Path(repo_path).rglob('*.py')):
             if any(p.startswith('.') or p in ('node_modules', '__pycache__', 'venv', '.venv')
@@ -133,6 +157,25 @@ class HydrologistAgent:
             try:
                 content = py_file.read_text(errors='replace')
                 rel_path = str(py_file.relative_to(repo_path))
+                if scoped_files is not None and rel_path.replace('\\', '/') not in scoped_files:
+                    continue
+
+                # Log unresolved dynamic references so users know what static parsing cannot resolve.
+                dynamic_hints = [
+                    r'execute\s*\(\s*f[\'\"]',
+                    r'read_(?:sql|csv|parquet|json)\s*\(\s*[^\'\"\)]',
+                    r'to_(?:sql|csv|parquet|json)\s*\(\s*[^\'\"\)]',
+                    r'spark\.sql\s*\(\s*[^\'\"\)]',
+                ]
+                for hint in dynamic_hints:
+                    for m in re.finditer(hint, content):
+                        line_num = content[:m.start()].count('\n') + 1
+                        self._dynamic_references.append({
+                            "source_file": rel_path,
+                            "line_number": line_num,
+                            "reason": "dynamic_reference_cannot_resolve",
+                            "preview": m.group(0)[:120],
+                        })
                 
                 for category, patterns in PYTHON_DATA_PATTERNS.items():
                     for pattern in patterns:
@@ -155,10 +198,27 @@ class HydrologistAgent:
         
         return flows
     
-    def _analyze_config_topology(self, repo_path: str) -> DAGConfigResult:
+    def _analyze_config_topology(self, repo_path: str, target_files: Optional[List[str]] = None) -> DAGConfigResult:
         """Parse pipeline configuration files."""
         try:
-            return self.dag_parser.analyze_directory(repo_path)
+            result = self.dag_parser.analyze_directory(repo_path)
+            if target_files is None:
+                return result
+
+            scoped = {
+                str(Path(p).as_posix()).lstrip("./")
+                for p in target_files
+                if Path(p).suffix.lower() in (".yml", ".yaml", ".py", ".sql")
+            }
+            if not scoped:
+                return DAGConfigResult()
+
+            result.pipelines = [p for p in result.pipelines if p.source_file in scoped]
+            result.config_relationships = [
+                rel for rel in result.config_relationships if rel[0] in scoped
+            ]
+            result.dbt_models = [m for m in result.dbt_models if m.source_file in scoped]
+            return result
         except Exception as e:
             logger.error(f"Config topology analysis failed: {e}")
             return DAGConfigResult(errors=[str(e)])
