@@ -161,10 +161,16 @@ class ArchivistAgent:
         return []
 
     def _get_day_one_answers(self) -> Dict[str, Any]:
-         """Fetch Day One Answers from Graph Metadata."""
-         if hasattr(self.knowledge_graph, "metadata") and "day_one_answers" in self.knowledge_graph.metadata:
+        """Fetch Day One Answers from Graph Metadata."""
+        if hasattr(self.knowledge_graph, "metadata") and "day_one_answers" in self.knowledge_graph.metadata:
             return self.knowledge_graph.metadata.get("day_one_answers", {})
-         return {}
+        return {}
+
+    def _get_day_one_quality(self) -> Dict[str, Any]:
+        """Fetch Day One quality-gate metrics from graph metadata."""
+        if hasattr(self.knowledge_graph, "metadata") and "day_one_quality" in self.knowledge_graph.metadata:
+            return self.knowledge_graph.metadata.get("day_one_quality", {})
+        return {}
 
 
     # Artifact Generation Methods
@@ -283,6 +289,7 @@ class ArchivistAgent:
         
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         answers_data = self._get_day_one_answers()
+        quality_data = self._get_day_one_quality()
         questions = answers_data.get("questions", [])
         
         # Lookup helper
@@ -317,6 +324,15 @@ class ArchivistAgent:
             f"ingesting data across **{len(sources)} sources** to service **{len(sinks)} primary sinks**.\n",
             
             f"## Day-One Questions & Answers\n",
+
+            f"## Day-One Quality Gate",
+            f"- Gate Status: {quality_data.get('quality_gate', 'unknown')}",
+            f"- Rubric 5 Ready: {quality_data.get('is_rubric_5_ready', False)}",
+            f"- Readiness Score: {quality_data.get('readiness_score', 0.0)}",
+            f"- Answered Questions: {quality_data.get('answered_questions', 0)}/{quality_data.get('total_questions', 5)}",
+            f"- Evidence-backed Questions: {quality_data.get('evidence_backed_questions', 0)}/{quality_data.get('total_questions', 5)}",
+            f"- Line-cited Questions: {quality_data.get('line_cited_questions', 0)}/{quality_data.get('total_questions', 5)}",
+            f"- High/Medium Confidence Questions: {quality_data.get('high_or_medium_confidence_questions', 0)}/{quality_data.get('total_questions', 5)}\n",
             
             f"### Q1: What is the primary data ingestion path?",
             f"**Answer**: {(q1.get('answer', 'Data Unavailable.'))}\n",
