@@ -23,6 +23,7 @@ class KnowledgeGraph:
         self._dataset_nodes: Dict[str, DatasetNode] = {}
         self._function_nodes: Dict[str, FunctionNode] = {}
         self._transformation_nodes: Dict[str, TransformationNode] = {}
+        self.metadata: Dict[str, Any] = {}
     
     @property
     def graph(self) -> nx.DiGraph:
@@ -129,6 +130,55 @@ class KnowledgeGraph:
 
     def get_function_nodes(self) -> Dict[str, FunctionNode]:
         return self._function_nodes.copy()
+
+    def get_transformation_nodes(self) -> Dict[str, TransformationNode]:
+        return self._transformation_nodes.copy()
+
+    def get_all_nodes(self) -> List[Any]:
+        """Return all typed node objects across node categories."""
+        return [
+            *self._module_nodes.values(),
+            *self._dataset_nodes.values(),
+            *self._function_nodes.values(),
+            *self._transformation_nodes.values(),
+        ]
+
+    def get_top_modules(self, limit: int = 10) -> List[ModuleNode]:
+        """Return module nodes ranked by PageRank score (descending)."""
+        modules = list(self._module_nodes.values())
+        modules.sort(key=lambda m: (m.pagerank_score, m.path), reverse=True)
+        return modules[:limit]
+
+    def get_node_pagerank(self, node_id: str) -> float:
+        if node_id in self._module_nodes:
+            return float(self._module_nodes[node_id].pagerank_score)
+        return float(self._graph.nodes.get(node_id, {}).get("pagerank_score", 0.0))
+
+    def get_lineage_sources(self) -> List[DatasetNode]:
+        """Dataset nodes that have no incoming edges in the unified graph."""
+        sources: List[DatasetNode] = []
+        for dataset_name, dataset_node in self._dataset_nodes.items():
+            if dataset_name in self._graph and self._graph.in_degree(dataset_name) == 0:
+                sources.append(dataset_node)
+        return sources
+
+    def get_lineage_sinks(self) -> List[DatasetNode]:
+        """Dataset nodes that have no outgoing edges in the unified graph."""
+        sinks: List[DatasetNode] = []
+        for dataset_name, dataset_node in self._dataset_nodes.items():
+            if dataset_name in self._graph and self._graph.out_degree(dataset_name) == 0:
+                sinks.append(dataset_node)
+        return sinks
+
+    def find_strongly_connected_components(self) -> List[List[str]]:
+        """Return strongly connected components from module import relationships."""
+        subgraph = nx.DiGraph()
+        for module_path in self._module_nodes:
+            subgraph.add_node(module_path)
+        for u, v in self.get_edges_by_type(EdgeType.IMPORTS.value):
+            if u in self._module_nodes and v in self._module_nodes:
+                subgraph.add_edge(u, v)
+        return [list(component) for component in nx.strongly_connected_components(subgraph)]
     
     def get_nodes_by_type(self, node_type: str) -> List[str]:
         return [n for n, d in self._graph.nodes(data=True) if d.get('node_type') == node_type]
