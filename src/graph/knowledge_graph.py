@@ -28,6 +28,22 @@ class KnowledgeGraph:
     @property
     def graph(self) -> nx.DiGraph:
         return self._graph
+
+    @property
+    def module_graph(self) -> nx.DiGraph:
+        """Derived module/function graph view for architecture analysis."""
+        return self._build_filtered_graph(
+            node_types={NodeType.MODULE.value, NodeType.FUNCTION.value},
+            edge_types={EdgeType.IMPORTS.value, EdgeType.CALLS.value},
+        )
+
+    @property
+    def lineage_graph(self) -> nx.DiGraph:
+        """Derived dataset/transformation graph view for lineage analysis."""
+        return self._build_filtered_graph(
+            node_types={NodeType.DATASET.value, NodeType.TRANSFORMATION.value},
+            edge_types={EdgeType.PRODUCES.value, EdgeType.CONSUMES.value, EdgeType.CONFIGURES.value},
+        )
     
     # === TYPED ADD METHODS ===
     
@@ -94,6 +110,17 @@ class KnowledgeGraph:
             edge.source, edge.target,
             **edge.model_dump(mode='json')
         )
+
+    def _build_filtered_graph(self, node_types: Set[str], edge_types: Set[str]) -> nx.DiGraph:
+        """Create a filtered copy of the graph by node and edge types."""
+        filtered = self._graph.copy()
+        filtered.remove_nodes_from(
+            [n for n, d in filtered.nodes(data=True) if d.get("node_type") not in node_types]
+        )
+        filtered.remove_edges_from(
+            [(u, v) for u, v, d in filtered.edges(data=True) if d.get("edge_type") not in edge_types]
+        )
+        return filtered
 
     def update_node_attributes(self, node_id: str, **attrs: Any) -> None:
         """Update both the raw graph node attributes and the typed cache."""
@@ -221,6 +248,14 @@ class KnowledgeGraph:
         """Serialize the full graph to JSON."""
         self._serialize_graph(self._graph, filepath)
 
+    def serialize_module_graph(self, filepath: str | Path) -> None:
+        """Serialize the module/function graph view."""
+        self._serialize_graph(self.module_graph, Path(filepath))
+
+    def serialize_lineage_graph(self, filepath: str | Path) -> None:
+        """Serialize the lineage graph view."""
+        self._serialize_graph(self.lineage_graph, Path(filepath))
+
     def serialize_filtered_to_json(
         self,
         filepath: Path,
@@ -271,6 +306,41 @@ class KnowledgeGraph:
                 logger.warning(f"Could not reconstruct typed node {node_id}: {e}")
         logger.info(f"Graph deserialized from {filepath}")
         return kg
+
+    def _ingest_graph(self, graph: nx.DiGraph) -> None:
+        """Merge a loaded graph into this instance and rebuild typed caches."""
+        self._graph = nx.compose(self._graph, graph)
+        for node_id, node_data in graph.nodes(data=True):
+            nt = node_data.get("node_type")
+            try:
+                if nt == NodeType.MODULE.value:
+                    attrs = {k: v for k, v in node_data.items() if k in ModuleNode.model_fields}
+                    self._module_nodes[node_id] = ModuleNode.model_validate(attrs)
+                elif nt == NodeType.DATASET.value:
+                    attrs = {k: v for k, v in node_data.items() if k in DatasetNode.model_fields}
+                    self._dataset_nodes[node_id] = DatasetNode.model_validate(attrs)
+                elif nt == NodeType.FUNCTION.value:
+                    attrs = {k: v for k, v in node_data.items() if k in FunctionNode.model_fields}
+                    self._function_nodes[node_id] = FunctionNode.model_validate(attrs)
+                elif nt == NodeType.TRANSFORMATION.value:
+                    attrs = {k: v for k, v in node_data.items() if k in TransformationNode.model_fields}
+                    self._transformation_nodes[node_id] = TransformationNode.model_validate(attrs)
+            except Exception as e:
+                logger.warning(f"Could not ingest typed node {node_id}: {e}")
+
+    def deserialize_module_graph(self, filepath: str | Path) -> None:
+        """Load a previously serialized module graph view into this KG instance."""
+        with open(filepath, "r") as f:
+            data = json.load(f)
+        graph = json_graph.node_link_graph(data, directed=True)
+        self._ingest_graph(graph)
+
+    def deserialize_lineage_graph(self, filepath: str | Path) -> None:
+        """Load a previously serialized lineage graph view into this KG instance."""
+        with open(filepath, "r") as f:
+            data = json.load(f)
+        graph = json_graph.node_link_graph(data, directed=True)
+        self._ingest_graph(graph)
     
     # === STATS ===
     
