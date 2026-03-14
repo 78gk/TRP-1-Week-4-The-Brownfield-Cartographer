@@ -73,6 +73,8 @@ class CartographyOrchestrator:
                 p for p in changed_files
                 if Path(self.repo_path, p).exists()
             ]
+
+        no_changes_incremental = self.incremental and analysis_scope == []
                   
         # 1. Pipeline execution flags
         run_semanticist = SEMANTICIST_AVAILABLE and not self.skip_semantics
@@ -80,32 +82,40 @@ class CartographyOrchestrator:
         # 2. Sequential execution
         
         # --- Surveyor Agent ---
-        try:
-            logger.info("Executing Phase 1: Surveyor Agent...")
-            self._record_agent_action("Surveyor", "started", "static_analysis", "static")
-            # Current Surveyor API takes a KnowledgeGraph and exposes analyze(repo_path).
-            surveyor = SurveyorAgent(self.knowledge_graph)
-            surveyor_summary = surveyor.analyze(self.repo_path, target_files=analysis_scope)
-            self.results_summary["surveyor"] = surveyor_summary
-            self._record_agent_action("Surveyor", "completed", "static_analysis", "static", details=surveyor_summary)
-        except Exception as e:
-            logger.error(f"Surveyor Agent failed: {e}")
-            self.results_summary["surveyor"] = {"error": str(e)}
-            self._record_agent_action("Surveyor", "failed", "static_analysis", "static", confidence="high", details={"error": str(e)})
+        if no_changes_incremental:
+            self.results_summary["surveyor"] = {"status": "skipped_no_changes", "changed_files": 0}
+            self._record_agent_action("Surveyor", "skipped_no_changes", "static_analysis", "static")
+        else:
+            try:
+                logger.info("Executing Phase 1: Surveyor Agent...")
+                self._record_agent_action("Surveyor", "started", "static_analysis", "static")
+                # Current Surveyor API takes a KnowledgeGraph and exposes analyze(repo_path).
+                surveyor = SurveyorAgent(self.knowledge_graph)
+                surveyor_summary = surveyor.analyze(self.repo_path, target_files=analysis_scope)
+                self.results_summary["surveyor"] = surveyor_summary
+                self._record_agent_action("Surveyor", "completed", "static_analysis", "static", details=surveyor_summary)
+            except Exception as e:
+                logger.error(f"Surveyor Agent failed: {e}")
+                self.results_summary["surveyor"] = {"error": str(e)}
+                self._record_agent_action("Surveyor", "failed", "static_analysis", "static", confidence="high", details={"error": str(e)})
 
         # --- Hydrologist Agent ---
-        try:
-            logger.info("Executing Phase 2: Hydrologist Agent...")
-            self._record_agent_action("Hydrologist", "started", "sql_parsing", "static")
-            # Current Hydrologist API takes a KnowledgeGraph and exposes analyze(repo_path).
-            hydro = HydrologistAgent(self.knowledge_graph)
-            hydrologist_summary = hydro.analyze(self.repo_path, target_files=analysis_scope)
-            self.results_summary["hydrologist"] = hydrologist_summary
-            self._record_agent_action("Hydrologist", "completed", "sql_parsing", "static", details=hydrologist_summary)
-        except Exception as e:
-            logger.error(f"Hydrologist Agent failed: {e}")
-            self.results_summary["hydrologist"] = {"error": str(e)}
-            self._record_agent_action("Hydrologist", "failed", "sql_parsing", "static", confidence="high", details={"error": str(e)})
+        if no_changes_incremental:
+            self.results_summary["hydrologist"] = {"status": "skipped_no_changes", "changed_files": 0}
+            self._record_agent_action("Hydrologist", "skipped_no_changes", "sql_parsing", "static")
+        else:
+            try:
+                logger.info("Executing Phase 2: Hydrologist Agent...")
+                self._record_agent_action("Hydrologist", "started", "sql_parsing", "static")
+                # Current Hydrologist API takes a KnowledgeGraph and exposes analyze(repo_path).
+                hydro = HydrologistAgent(self.knowledge_graph)
+                hydrologist_summary = hydro.analyze(self.repo_path, target_files=analysis_scope)
+                self.results_summary["hydrologist"] = hydrologist_summary
+                self._record_agent_action("Hydrologist", "completed", "sql_parsing", "static", details=hydrologist_summary)
+            except Exception as e:
+                logger.error(f"Hydrologist Agent failed: {e}")
+                self.results_summary["hydrologist"] = {"error": str(e)}
+                self._record_agent_action("Hydrologist", "failed", "sql_parsing", "static", confidence="high", details={"error": str(e)})
 
         # --- Semanticist Agent ---
         if run_semanticist:

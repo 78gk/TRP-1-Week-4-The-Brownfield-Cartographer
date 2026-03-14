@@ -255,7 +255,11 @@ class HydrologistAgent:
                     edge_type="consumes", transformation_type="sql_query",
                     source_file=dep.source_file, line_range=dep.line_range)
                 self.kg.add_consumes_edge(ConsumesEdge(
-                    source=transform_name, target=source_table, source_file=dep.source_file))
+                    source=transform_name,
+                    target=source_table,
+                    source_file=dep.source_file,
+                    line_range=dep.line_range,
+                ))
             
             for target_table in dep.target_tables:
                 ds_node = DatasetNode(name=target_table, storage_type="table", source_file=dep.source_file)
@@ -268,7 +272,10 @@ class HydrologistAgent:
                     source_file=dep.source_file, line_range=dep.line_range)
                 self.kg.add_produces_edge(ProducesEdge(
                     source=transform_name, target=target_table,
-                    transformation_type="sql_query", source_file=dep.source_file))
+                    transformation_type="sql_query",
+                    source_file=dep.source_file,
+                    line_range=dep.line_range,
+                ))
         
         # === Merge dbt refs as lineage edges ===
         for ref in sql_result.dbt_refs:
@@ -280,7 +287,8 @@ class HydrologistAgent:
                 self._lineage_graph.add_node(model_name, node_type="dataset", storage_type="table")
                 self._lineage_graph.add_edge(ref.target, model_name,
                     edge_type="dbt_ref", source_file=ref.source_file, 
-                    line_number=ref.line_number, transformation_type="dbt_model")
+                    line_number=ref.line_number, line_range=(ref.line_number, ref.line_number),
+                    transformation_type="dbt_model")
                 
                 ds_source = DatasetNode(name=ref.target, storage_type="table")
                 ds_target = DatasetNode(name=model_name, storage_type="table", source_file=ref.source_file)
@@ -293,6 +301,7 @@ class HydrologistAgent:
                 self._lineage_graph.add_node(model_name, node_type="dataset", storage_type="table")
                 self._lineage_graph.add_edge(ref.target, model_name,
                     edge_type="dbt_source", source_file=ref.source_file,
+                    line_range=(ref.line_number, ref.line_number),
                     transformation_type="dbt_model")
                 
                 ds_source = DatasetNode(name=ref.target, storage_type="table", is_source_of_truth=True)
@@ -320,7 +329,9 @@ class HydrologistAgent:
             if flow['operation'] == 'read':
                 self._lineage_graph.add_edge(dataset, transform_name,
                     edge_type="python_read", source_file=source_file,
-                    line_number=flow['line_number'], transformation_type="python_transform")
+                    line_number=flow['line_number'],
+                    line_range=(flow['line_number'], flow['line_number']),
+                    transformation_type="python_transform")
                 self.kg.add_consumes_edge(ConsumesEdge(
                     source=transform_name,
                     target=dataset,
@@ -330,7 +341,9 @@ class HydrologistAgent:
             else:
                 self._lineage_graph.add_edge(transform_name, dataset,
                     edge_type="python_write", source_file=source_file,
-                    line_number=flow['line_number'], transformation_type="python_transform")
+                    line_number=flow['line_number'],
+                    line_range=(flow['line_number'], flow['line_number']),
+                    transformation_type="python_transform")
                 self.kg.add_produces_edge(ProducesEdge(
                     source=transform_name,
                     target=dataset,
@@ -364,7 +377,9 @@ class HydrologistAgent:
                     upstream_id = f"task:{pipeline.pipeline_id}:{upstream}"
                     self._lineage_graph.add_edge(upstream_id, task_id,
                         edge_type="task_dependency", pipeline=pipeline.pipeline_id,
-                        source_file=pipeline.source_file, transformation_type="dag_task")
+                        source_file=pipeline.source_file,
+                        line_range=(task.line_number, task.line_number),
+                        transformation_type="dag_task")
         
         # Add config relationships
         for config_file, target, rel_type in config_result.config_relationships:
