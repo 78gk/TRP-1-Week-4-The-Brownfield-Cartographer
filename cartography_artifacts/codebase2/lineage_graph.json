@@ -1,0 +1,251 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "node_type": "transformation",
+      "name": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql:1",
+      "source_datasets": [
+        "JINJA_PLACEHOLDER"
+      ],
+      "target_datasets": [],
+      "transformation_type": "sql_query",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql",
+      "line_range": [
+        1,
+        1
+      ],
+      "sql_query_if_applicable": "WITH customers AS (SELECT * FROM JINJA_PLACEHOLDER), orders AS (SELECT * FROM JINJA_PLACEHOLDER), payments AS (SELECT * FROM JINJA_PLACEHOLDER), customer_orders AS (SELECT customer_id, MIN(order_date)",
+      "id": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql:1"
+    },
+    {
+      "node_type": "dataset",
+      "name": "JINJA_PLACEHOLDER",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql",
+      "id": "JINJA_PLACEHOLDER"
+    },
+    {
+      "node_type": "transformation",
+      "name": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql:1",
+      "source_datasets": [
+        "JINJA_PLACEHOLDER"
+      ],
+      "target_datasets": [],
+      "transformation_type": "sql_query",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql",
+      "line_range": [
+        1,
+        1
+      ],
+      "sql_query_if_applicable": "WITH orders AS (SELECT * FROM JINJA_PLACEHOLDER), payments AS (SELECT * FROM JINJA_PLACEHOLDER), order_payments AS (SELECT order_id, SUM(CASE WHEN payment_method = 'JINJA_PLACEHOLDER' THEN amount ELSE",
+      "id": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql:1"
+    },
+    {
+      "node_type": "transformation",
+      "name": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql:1",
+      "source_datasets": [
+        "JINJA_PLACEHOLDER"
+      ],
+      "target_datasets": [],
+      "transformation_type": "sql_query",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql",
+      "line_range": [
+        1,
+        1
+      ],
+      "sql_query_if_applicable": "WITH source AS (SELECT * FROM JINJA_PLACEHOLDER), renamed AS (SELECT id AS customer_id, first_name, last_name FROM source) SELECT * FROM renamed",
+      "id": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql:1"
+    },
+    {
+      "node_type": "transformation",
+      "name": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql:1",
+      "source_datasets": [
+        "JINJA_PLACEHOLDER"
+      ],
+      "target_datasets": [],
+      "transformation_type": "sql_query",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql",
+      "line_range": [
+        1,
+        1
+      ],
+      "sql_query_if_applicable": "WITH source AS (SELECT * FROM JINJA_PLACEHOLDER), renamed AS (SELECT id AS order_id, user_id AS customer_id, order_date, status FROM source) SELECT * FROM renamed",
+      "id": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql:1"
+    },
+    {
+      "node_type": "transformation",
+      "name": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql:1",
+      "source_datasets": [
+        "JINJA_PLACEHOLDER"
+      ],
+      "target_datasets": [],
+      "transformation_type": "sql_query",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql",
+      "line_range": [
+        1,
+        1
+      ],
+      "sql_query_if_applicable": "WITH source AS (SELECT * FROM JINJA_PLACEHOLDER), renamed AS (SELECT id AS payment_id, order_id, payment_method, amount /* `amount` is currently stored in cents, so we convert it to dollars */ / 100 A",
+      "id": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql:1"
+    },
+    {
+      "node_type": "dataset",
+      "name": "stg_customers",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql",
+      "id": "stg_customers"
+    },
+    {
+      "node_type": "dataset",
+      "name": "customers",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql",
+      "id": "customers"
+    },
+    {
+      "node_type": "dataset",
+      "name": "stg_orders",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql",
+      "id": "stg_orders"
+    },
+    {
+      "node_type": "dataset",
+      "name": "stg_payments",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql",
+      "id": "stg_payments"
+    },
+    {
+      "node_type": "dataset",
+      "name": "orders",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql",
+      "id": "orders"
+    },
+    {
+      "node_type": "dataset",
+      "name": "raw_customers",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": null,
+      "id": "raw_customers"
+    },
+    {
+      "node_type": "dataset",
+      "name": "raw_orders",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": null,
+      "id": "raw_orders"
+    },
+    {
+      "node_type": "dataset",
+      "name": "raw_payments",
+      "storage_type": "table",
+      "purpose_statement": null,
+      "domain_cluster": null,
+      "schema_snapshot": null,
+      "freshness_sla": null,
+      "owner": null,
+      "is_source_of_truth": false,
+      "source_file": null,
+      "id": "raw_payments"
+    }
+  ],
+  "edges": [
+    {
+      "edge_type": "consumes",
+      "source": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql:1",
+      "target": "JINJA_PLACEHOLDER",
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\customers.sql",
+      "line_range": null
+    },
+    {
+      "edge_type": "consumes",
+      "source": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql:1",
+      "target": "JINJA_PLACEHOLDER",
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\orders.sql",
+      "line_range": null
+    },
+    {
+      "edge_type": "consumes",
+      "source": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql:1",
+      "target": "JINJA_PLACEHOLDER",
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_customers.sql",
+      "line_range": null
+    },
+    {
+      "edge_type": "consumes",
+      "source": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql:1",
+      "target": "JINJA_PLACEHOLDER",
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_orders.sql",
+      "line_range": null
+    },
+    {
+      "edge_type": "consumes",
+      "source": "sql:C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql:1",
+      "target": "JINJA_PLACEHOLDER",
+      "source_file": "C:\\projects\\10\\TRP 1 Week 4 The Brownfield Cartographer\\target_repos\\jaffle_shop_classic\\models\\staging\\stg_payments.sql",
+      "line_range": null
+    }
+  ]
+}

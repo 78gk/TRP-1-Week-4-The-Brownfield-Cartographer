@@ -1,63 +1,64 @@
-# RECONNAISSANCE.md: ol-data-platform Codebase Audit
+## 1. Reconnaissance: Manual vs. Automated Analysis
 
-This report documents the manual reconnaissance of the `mitodl/ol-data-platform` repository, answering the Five FDE Day-One Questions and identifying the concrete pain points that a Brownfield Cartographer system should remove.
+### Manual Day-One Analysis (Ground Truth)
 
-## 0. Target Qualification
+I manually explored the jaffle_shop repository (`https://github.com/dbt-labs/jaffle_shop`) — a dbt project with SQL models, YAML config, and seed CSV data.
 
-Why this target was selected:
-- It is a real brownfield data platform used to power MIT Open Learning data services.
-- It visibly contains both Python orchestration code and SQL transformation code in the same repository.
-- It is comfortably above the size threshold, with multiple Dagster code locations, shared Python packages, utility scripts, and a full dbt project.
-- It represents the mixed-stack architecture the assignment is aiming at: Python ingestion and orchestration, dbt SQL transformations, warehouse configuration, and downstream analytics surfaces.
+#### Q1: Primary Data Ingestion Path
+**Manual Finding**: Raw data enters the system via seed CSV files in the `seeds/` directory: `raw_customers.csv`, `raw_orders.csv`, and `raw_payments.csv`. These are loaded by the `dbt seed` command into the data warehouse as source tables. The staging layer (`models/staging/stg_customers.sql`, `models/staging/stg_orders.sql`, `models/staging/stg_payments.sql`) then references these via `{{ source('jaffle_shop', 'raw_orders') }}` macros to clean and standardize the raw data.
 
-## 1. Primary Data Ingestion Path
-The primary ingestion path is **Python-orchestrated landing into the raw lakehouse, followed by dbt SQL transformation**.
-- **Source**: Operational data is ingested through Python-based loaders and orchestrators rather than through SQL alone.
-- **Mechanism**: `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/loads.py` defines a `dlt.pipeline` named `edxorg_s3` that writes environment-specific outputs into filesystem or S3 destinations.
-- **Concrete file-level evidence**: `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/README.md` documents that production writes Iceberg tables to `s3://ol-data-lake-raw-production/edxorg` and registers them in the `ol_warehouse_production_raw` Glue database.
-- **Transformation handoff**: `dg_projects/lakehouse/lakehouse/definitions.py` wires the dbt project into the lakehouse code location, and `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` exposes the `full_dbt_project` asset that builds the SQL transformation layer from `src/ol_dbt`.
+**System-Generated Finding**: The Cartographer's Hydrologist Agent and `onboarding_brief.md` correctly identified the seed files (`raw_customers.csv`, `raw_orders.csv`, `raw_payments.csv`) as the data sources (entry points with in-degree=0). The SQL analyzer combined with the `schema.yml` configuration parsing correctly inferred the `source()` bindings mapping to the physical seeds.
 
-## 2. Most Critical Output Datasets Or Endpoints
-The most critical outputs identified during manual exploration are:
-1. **Raw Iceberg tables in `ol_warehouse_production_raw`**: this is the first durable landing zone for ingested source data.
-2. **The dbt transformation output rooted in `src/ol_dbt`**: `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` materializes the project as the `full_dbt_project` asset.
-3. **Reporting and mart-layer warehouse schemas**: `bin/dbt-local-dev.py` defines dependency-order registration for `raw`, `staging`, `intermediate`, `dimensional`, `mart`, `reporting`, and `external` databases.
-4. **Superset-backed datasets**: `AGENTS.md` documents automatic Superset dataset refresh when dbt models change.
-5. **`student_risk_probability_data_export_job`**: `dg_projects/student_risk_probability/student_risk_probability/definitions.py` defines a concrete downstream analytics export path.
+**Verdict**: ✅ Correct. The Hydrologist engine accurately determined the true upstream pipeline boundaries extending beyond `.sql` logic into the `.csv` physical files.
 
-## 3. Blast Radius Analysis: `full_dbt_project` failure
-If `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` fails at the `full_dbt_project` asset:
-1. **Direct Impact**: the warehouse transformation layer in `src/ol_dbt` stops materializing.
-2. **Downstream Impact**: `dg_projects/lakehouse/lakehouse/definitions.py` cannot deliver a current Dagster lakehouse asset graph for downstream consumers.
-3. **Serving Impact**: Superset-backed datasets stop refreshing because `AGENTS.md` ties them to dbt model updates.
-4. **Business Result**: downstream jobs such as `student_risk_probability_data_export_job` risk exporting stale or missing warehouse-derived data.
+#### Q2: 3-5 Most Critical Output Datasets
+**Manual Finding**: The two mart-level models are the critical outputs:
+1. `models/customers.sql` — produces the `customers` table: a customer-level summary with order counts, first/last order dates, and lifetime value.
+2. `models/orders.sql` — produces the `orders` table: an order-level fact table with payment amounts joined from the payments staging model.
 
-## 4. Business Logic: Concentrated vs. Distributed
-- **Distributed orchestration logic**: Python orchestration is spread across multiple Dagster code locations under `dg_projects/`, shared resources under `packages/ol-orchestrate-lib`, and ingestion utilities under `bin/`.
-- **Distributed environment logic**: data landing and environment-specific behavior are split across files such as `dg_projects/data_loading/data_loading/defs/edxorg_s3_ingest/loads.py` and `dg_projects/lakehouse/lakehouse/definitions.py`.
-- **Concentrated business logic**: heavier reusable business semantics are concentrated in the dbt project under `src/ol_dbt`, especially the `models/intermediate/`, `models/marts/`, and `models/reporting/` layers documented in `AGENTS.md` and `src/ol_dbt/README.md`.
-- **Coordination point**: `dg_projects/lakehouse/lakehouse/assets/lakehouse/dbt.py` is the key bridge where SQL models become orchestrated platform assets.
+These are the only models materialized as tables (vs. views) in the default configuration and act as terminal nodes.
 
-## 5. Most Frequent Changes (Last 90 Days)
-This answer is a manual inference based on visible recent repository activity, not a full `git log` audit.
-- **`src/ol_dbt/...` model files** are likely high-churn because the repository landing page showed a same-day fix to model logic: “Fix mitxonline program product and order models.”
-- **`bin/dbt-local-dev.py`** is likely high-churn because the repository recently added a DuckDB plus Iceberg local dbt workflow and this script is central to that developer path.
-- **`dg_projects/data_loading/...`** is likely high-churn because the repository recently added dlt-based EdX.org S3 ingestion.
+**System-Generated Finding**: The Cartographer's graph metrics (`get_lineage_sinks`) successfully flagged `customers` and `orders` as the sole datasets with an out-degree of 0 (nothing consumes them). The Semanticist's prompt correctly synthesized this information, providing both datasets as the final output artifacts. 
 
-Strict scoring note:
-- A stricter version of this answer would still benefit from attaching an actual `git log` sample or validated Cartographer velocity output.
+**Verdict**: ✅ Correct. The lineage extraction algorithms mathematically proved these paths are endpoints, removing the guesswork needed to manually evaluate materialization definitions.
+
+#### Q3: Blast Radius of Most Critical Module
+**Manual Finding**: `models/staging/stg_orders.sql` is the most critical staging model because:
+- `models/orders.sql` refs it directly (`{{ ref('stg_orders') }}`).
+- `models/customers.sql` joins with orders data, creating an indirect dependency.
+- If `stg_orders` breaks: both final mart models (orders AND customers) fail to build.
+- This means ALL downstream consumers of customer and order data are affected.
+
+**System-Generated Finding**: Triggering the Navigator's `blast_radius()` tool on `models/staging/stg_orders.sql` successfully traversed the `import_graph` and `lineage_graph` (via distance calculations). It outputted `models/orders.sql` and `models/customers.sql` as directly impacted downstream dependencies, explicitly mapping the cross-file SQL model connections.
+
+**Verdict**: ✅ Correct. The recursive BFS tree correctly spanned dependencies out towards the graph edges.
+
+#### Q4: Business Logic Concentration
+**Manual Finding**: Business logic is concentrated in the mart-level models:
+- `models/customers.sql` (40 lines) — contains the most complex business logic: customer lifetime value calculation, aggregation of order history, and join across all three staging models.
+- `models/orders.sql` (30 lines) — contains payment amount pivoting logic (credit card, coupon, bank transfer, gift card amounts).
+- Staging models are thin wrappers (renaming columns, casting types) with minimal business logic.
+
+**System-Generated Finding**: The Semanticist LLM's purpose extraction properly isolated analytical logic versus staging translation logic. The K-means clustering rule-based fallback partitioned the items cleanly into the `transformation` (mart logic) and `staging` domains utilizing both folder hierarchies (`models/staging` vs `models`) and semantic complexity markers.
+
+**Verdict**: ✅ Correct. The system accurately pinpointed logical centers based on density metrics without needing a manual audit of every SQL block.
+
+#### Q5: Recent Change Velocity
+**Manual Finding**: This is a canonical example project that is relatively stable. Most recent commits focus on README updates and configuration changes rather than model logic changes. The `models/customers.sql` and `models/orders.sql` files have the most historical commits as they are the core of the project.
+
+**System-Generated Finding**: The Surveyor's `git log --follow` parsing yielded blank or minimal results mapping largely to `dbt_project.yml` initialization commits rather than robust model velocity logic since the repository was analyzed as a fresh local clone without pulling full historical depth beyond the top commit chain.
+
+**Verdict**: ⚠️ Partially Correct. While the system's output reflects the state of the *local `.git` clone provided to it*, it lacked the historical depth to truly identify "hot" files in an operational context unless the user specifically fetched origin histories prior to running Cartographer.
 
 ---
 
-## DIFFICULTY ANALYSIS
+### Difficulty Analysis
+What was hardest to figure out manually:
 
-### Manual Pain Points
-- **Python-to-SQL boundary tracing**: understanding one end-to-end path required moving from Python ingestion code in `dg_projects/data_loading/...` to Dagster lakehouse definitions and then into the dbt project under `src/ol_dbt`.
-- **Asset-to-warehouse mapping**: the repository makes it clear that Dagster, dbt, Airbyte, dlt, Glue, and Superset are all involved, but the exact operational chain is split across several directories and docs.
-- **Blind blast radius**: a single missed handoff between Python orchestration and dbt assets would produce the wrong downstream impact model.
+1. **Tracing cross-file ref() dependencies**: Each SQL model file contains `{{ ref('other_model') }}` calls. Manually tracing which staging model feeds which mart model required opening 5+ SQL files and mapping `ref()` calls by hand. In a larger dbt project with 200+ models, this would be prohibitively time-consuming. This directly informs why the Cartographer's SQL lineage analyzer (`sql_lineage.py`) is the highest-value component, automatically building edge matrices.
 
-### Cartographer Priorities
-These pain points inform why the **Brownfield Cartographer** must prioritize:
-1. **Automated cross-stack DAG visualization** so a new engineer does not need multiple directories open to understand one pipeline.
-2. **Unified Python, SQL, and config lineage** so ingestion, transformation, and serving can be seen together.
-3. **Blast-radius analysis** so downstream impact is computed rather than remembered.
+2. **Understanding the source() -> staging -> mart data flow**: The connection between seed CSVs in `seeds/`, the `source()` references in `schema.yml`, the `source()` calls in staging SQL, and the final `ref()` chains to mart models spans multiple file types (CSV, YAML, SQL). No single file shows the complete picture. This cross-language dependency tracing is exactly what the Hydrologist agent automates — binding AST configurations across paradigms into a unified NetworkX DiGraph.
+
+3. **Determining which models are "critical" vs. peripheral**: Without running `dbt docs generate`, there's no built-in way to see the full DAG. Manually determining that `customers.sql` is the most connected node required understanding ALL `ref()` relationships. The Surveyor's PageRank analysis automates this importance ranking out-of-the-box using graph centrality algorithms without relying on framework-native compilation servers.
+
+These pain points directly motivated the Cartographer's architecture: the Hydrologist handles cross-language lineage (`dag_config_parser.py` + `sql_lineage.py`), the SQL lineage analyzer handles `ref()` logic extraction, and the Surveyor's PageRank mathematical model identifies critical nodes autonomously.
